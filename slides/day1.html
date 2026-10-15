@@ -405,7 +405,7 @@ WHERE c.customer_id IS NULL;</code></pre>
       </svg>
     </div>
     <ul class="bullets small">
-      <li><b>Row group</b>: a horizontal slice (often ~128 MB or ~1M rows). The unit of parallelism and skipping.</li>
+      <li><b>Row group</b>: a horizontal slice (DuckDB: 122,880 rows; Spark: ~128 MB). The unit of parallelism and skipping.</li>
       <li><b>Column chunk</b>: one column inside a row group, split into <b>pages</b>.</li>
       <li><b>Footer</b>: read first. It holds the schema and the <b>statistics</b> engines use to skip data.</li>
       <li><b>Encodings</b>: dictionary (repeated strings), run-length, delta (sorted ints, timestamps).</li>
