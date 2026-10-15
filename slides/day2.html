@@ -1,0 +1,849 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Day 2 · Modern Data Engineering</title>
+<link rel="icon" href="../assets/img/academy.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+Arabic:wght@400;600;700&family=IBM+Plex+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+<link rel="stylesheet" href="../assets/deck.css">
+</head>
+<body>
+<div class="deck" data-day="Day 2" data-course="Modern Data Engineering">
+
+<!-- ======================= OPENING ======================= -->
+<section class="slide title" data-label="Welcome">
+  <div class="kicker">SDAIA Academy · Modern Data Engineering</div>
+  <h1>Transformation, Modeling &amp; Quality</h1>
+  <p class="lead mt">Day 2: from raw tables to a tested, documented star schema</p>
+  <div class="meta">
+    <span class="track">Data Engineering Track</span>
+    <span>Day 2 of 5</span>
+    <span>DuckDB · Polars · dbt · Pandera</span>
+  </div>
+</section>
+
+<section class="slide" data-label="Recap">
+  <div class="kicker">Where we are</div>
+  <h2>Yesterday we landed the data. Today we make it useful.</h2>
+  <div class="flow">
+    <div class="step c-navy"><b>Bronze</b>raw.* tables, as the sources sent them<br><small>Day 1</small></div>
+    <div class="arrow">→</div>
+    <div class="step c-teal"><b>Silver</b>typed, deduplicated, conformed<br><small>Session 1</small></div>
+    <div class="arrow">→</div>
+    <div class="step c-cyan"><b>Gold</b>star schema: facts + dimensions<br><small>Sessions 2–3</small></div>
+    <div class="arrow">→</div>
+    <div class="step c-coral"><b>Trust</b>tests, contracts, quarantine<br><small>Session 4</small></div>
+  </div>
+  <div class="callout tip mt"><b>Your issue log from Lab 1.1</b> is today's to-do list: three timestamp formats, duplicate accounts, mixed mobile formats, orphan orders, negative quantities, supplier drift.</div>
+</section>
+
+<section class="slide" data-label="Agenda">
+  <div class="kicker">Today</div>
+  <h2>Day 2 agenda</h2>
+  <div class="agenda">
+    <div class="item"><span><b>Session 1 · Processing engines: DuckDB &amp; Polars</b><small>How analytical engines work, query plans, bronze → silver cleaning</small></span><span class="d">50 min</span></div>
+    <div class="item brk"><span>Break</span><span class="d">10 min</span></div>
+    <div class="item"><span><b>Session 2 · Dimensional modeling</b><small>Grain, facts, dimensions, keys, the fan-out trap</small></span><span class="d">50 min</span></div>
+    <div class="item brk"><span>Long break</span><span class="d">20 min</span></div>
+    <div class="item"><span><b>Session 3 · dbt: transformation as software</b><small>Sources, refs, materializations, incremental models, lineage</small></span><span class="d">50 min</span></div>
+    <div class="item brk"><span>Break</span><span class="d">10 min</span></div>
+    <div class="item"><span><b>Session 4 · Testing &amp; data quality</b><small>Tests, severities, contracts, unit tests, validation and quarantine</small></span><span class="d">50 min</span></div>
+  </div>
+</section>
+
+<!-- ======================= SESSION 1: ENGINES ======================= -->
+<section class="slide section" data-session="Session 1 · DuckDB & Polars">
+  <div class="kicker">Session 1</div>
+  <h1>Processing engines: DuckDB &amp; Polars</h1>
+  <ul class="bullets outcomes tight">
+    <li>Explain what makes modern analytical engines fast</li>
+    <li>Read a query plan and spot pushdowns (and their limits)</li>
+    <li>Clean bronze into silver with SQL and DataFrames</li>
+  </ul>
+  <div class="sess-no">01</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Under the hood</div>
+  <h2>Four ideas behind every fast analytical engine</h2>
+  <div class="cols cols-4 gap-s">
+    <div class="card c-teal"><h4>Columnar</h4><p class="small mb0">Data in memory is laid out by column (Apache Arrow), like Parquet on disk. Scans touch only needed columns.</p></div>
+    <div class="card c-cyan"><h4>Vectorized</h4><p class="small mb0">Operators process batches of ~2,000 values at once instead of one row at a time: CPU caches and SIMD stay busy.</p></div>
+    <div class="card c-coral"><h4>Parallel</h4><p class="small mb0">Morsel-driven: work is split into small chunks spread across all cores automatically.</p></div>
+    <div class="card c-purple"><h4>Optimized</h4><p class="small mb0">Queries become plans that are rewritten before running: pushdowns, join reordering, pruning.</p></div>
+  </div>
+  <div class="callout note mt small">DuckDB, Polars, DataFusion, ClickHouse, Snowflake, Spark's Photon, BigQuery: different products, same four ideas. Learn them once.</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">From query to result</div>
+  <h2>What happens when you press "run"</h2>
+  <div class="flow">
+    <div class="step c-navy"><b>Query</b>SQL or DataFrame chain</div>
+    <div class="arrow">→</div>
+    <div class="step c-navy"><b>Logical plan</b>what to compute</div>
+    <div class="arrow">→</div>
+    <div class="step c-teal"><b>Optimizer</b>pushdown · pruning · join order · constant folding</div>
+    <div class="arrow">→</div>
+    <div class="step c-cyan"><b>Physical plan</b>hash join, sort, scan…</div>
+    <div class="arrow">→</div>
+    <div class="step c-coral"><b>Execution</b>vectorized, parallel</div>
+  </div>
+  <div class="cols cols-2 mt">
+    <pre class="code s" data-file="DuckDB"><code class="language-sql">EXPLAIN ANALYZE
+SELECT store_id, count(*)
+FROM raw.orders
+WHERE status = 'delivered'
+GROUP BY ALL;
+-- SEQ_SCAN  Projections: store_id
+--           Filters: status='delivered'</code></pre>
+    <pre class="code s" data-file="Polars"><code class="language-python">lf = (pl.scan_parquet("orders.parquet")
+        .filter(pl.col("status") == "delivered")
+        .group_by("store_id").len())
+print(lf.explain())
+# Parquet SCAN
+#   PROJECT 2/9 COLUMNS
+#   SELECTION: col("status") == "delivered"</code></pre>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Choosing an engine</div>
+  <h2>Same ideas, different shapes</h2>
+  <table class="t small">
+    <tr><th></th><th>DuckDB</th><th>Polars</th><th>pandas</th><th>Spark</th></tr>
+    <tr><td><b>Interface</b></td><td>SQL (+ Python relational API)</td><td>DataFrame expressions</td><td>DataFrame, eager</td><td>SQL + DataFrame</td></tr>
+    <tr><td><b>Execution</b></td><td>vectorized, parallel, out-of-core</td><td>vectorized, parallel, lazy, streaming</td><td>mostly single-threaded</td><td>distributed over a cluster</td></tr>
+    <tr><td><b>Comfortable scale</b></td><td>up to ~100s of GB on one machine</td><td>up to ~100s of GB on one machine</td><td>what fits in RAM, ×3</td><td>TB – PB</td></tr>
+    <tr><td><b>Shines at</b></td><td>warehouse-style SQL, files in place</td><td>pipelines in Python, complex transforms</td><td>small data, the ecosystem</td><td>very large data, many users</td></tr>
+  </table>
+  <div class="callout tip mt small"><b>Scale up before you scale out.</b> One machine with 64 cores and 512 GB RAM is cheap to rent and simpler to run than a cluster. Reach for Spark when data or concurrency outgrows it (Day 3).</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">One question, two interfaces</div>
+  <h2>SQL and DataFrames are the same plan</h2>
+  <div class="cols cols-2">
+    <pre class="code s" data-file="DuckDB SQL"><code class="language-sql">SELECT o.store_id,
+       round(sum(i.quantity * i.unit_price
+                 - i.discount), 2) AS revenue
+FROM raw.orders o
+JOIN raw.order_items i USING (order_id)
+WHERE o.status = 'delivered'
+  AND o.created_at >= '2026-09-01'
+GROUP BY o.store_id
+ORDER BY o.store_id;</code></pre>
+    <pre class="code s" data-file="Polars (lazy)"><code class="language-python">(orders
+ .filter((pl.col("status") == "delivered")
+         &amp; (pl.col("created_at") >= "2026-09-01"))
+ .join(items, on="order_id")
+ .group_by("store_id")
+ .agg((pl.col("quantity") * pl.col("unit_price")
+       - pl.col("discount")).sum().round(2)
+       .alias("revenue"))
+ .sort("store_id")
+ .collect())</code></pre>
+  </div>
+  <div class="cols cols-2 mt">
+    <div class="callout note small"><b>SQL</b> for relational logic that analysts review and dbt manages: most of a warehouse.</div>
+    <div class="callout note small"><b>DataFrames</b> for procedural or parametrized logic, and code you unit-test as Python functions. Both exchange data through Arrow for free.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Bronze → silver</div>
+  <h2>Cleaning rules for Qafila's issue log</h2>
+  <table class="t small">
+    <tr><th>Problem (Lab 1.1)</th><th>Silver rule</th><th>Keep the raw value?</th></tr>
+    <tr><td>3 timestamp formats in delivery events</td><td>parse each to one <b>UTC</b> timestamp</td><td>yes, in bronze</td></tr>
+    <tr><td>Redelivered events</td><td>keep the first-ingested copy per <code>event_id</code></td><td>bronze keeps all</td></tr>
+    <tr><td>Mobiles in 4+ formats</td><td>digits only → <b>E.164</b> <code>+9665XXXXXXXX</code>, else NULL</td><td>yes</td></tr>
+    <tr><td>Duplicate accounts per national ID</td><td><code>person_id</code> = oldest account of the person (link, don't delete)</td><td>yes</td></tr>
+    <tr><td>Arabic spelling variants <span class="ar">(أ إ آ، ـ، ـَ)</span></td><td>normalized copy for matching; original for display</td><td>yes</td></tr>
+    <tr><td>Decimal commas, <span class="ar">٩٫٤٩</span></td><td>translate digits, comma → dot, cast</td><td>yes</td></tr>
+  </table>
+  <div class="callout tip mt small"><b>Silver is conformed, not curated.</b> Fix types, formats and duplicates; don't apply business logic (that's gold). Never destroy the raw value: rules have bugs.</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Time is hard</div>
+  <h2>Store UTC, convert at the edge</h2>
+  <div class="cols cols-2">
+    <div>
+      <ul class="bullets small">
+        <li>Store and compute in <b>UTC</b>; convert to <b>Asia/Riyadh</b> for business days and display.</li>
+        <li>Riyadh is UTC+3 all year (no daylight saving), but your partners and your cloud region may not be.</li>
+        <li>An order at <b>22:30 UTC on 22 Sep</b> is a <b>23 Sep</b> order in Riyadh: date boundaries move revenue between days.</li>
+        <li>Two clocks for every event: <b>event time</b> (when it happened) and <b>ingest time</b> (when we got it). Keep both.</li>
+      </ul>
+    </div>
+    <pre class="code s" data-file="Polars: three formats → one UTC type"><code class="language-python">et = pl.col("event_time")
+events = events.with_columns(
+  pl.when(et.str.contains(r"^\d{13}$"))      # epoch ms
+    .then(pl.from_epoch(et.cast(pl.Int64),
+                        time_unit="ms")
+            .dt.replace_time_zone("UTC"))
+    .otherwise(et.str.to_datetime(           # ISO +03:00 / Z
+                 time_zone="UTC"))
+    .alias("event_at_utc"))
+events.with_columns(
+  pl.col("event_at_utc")
+    .dt.convert_time_zone("Asia/Riyadh"))</code></pre>
+  </div>
+</section>
+
+<section class="slide lab top">
+  <div class="cols cols-2">
+    <div>
+      <div class="lab-tag">Lab 2.1 · 25 min</div>
+      <h2>Bronze → silver with DuckDB and Polars</h2>
+      <a class="nb" href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D2_1_bronze_to_silver.ipynb" target="_blank" rel="noopener">labs/D2_1_bronze_to_silver.ipynb ↗</a>
+      <p class="small mt">Clean the delivery events and customers into silver Parquet, in both SQL and DataFrames.</p>
+    </div>
+    <ul class="checklist">
+      <li>Same question, two engines <span class="min">5'</span></li>
+      <li>Parse three timestamp formats into UTC (Polars) <span class="min">6'</span></li>
+      <li>Deduplicate, Riyadh time, measure lateness <span class="min">5'</span></li>
+      <li>Clean customers in SQL: mobiles, names, duplicates <span class="min">5'</span></li>
+      <li>Read the plans; write silver Parquet <span class="min">4'</span></li>
+      <li class="stretch">✱ Out of core: a big join with a 100 MB memory limit</li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide quiz">
+  <div class="kicker">Checkpoint</div>
+  <h2>You filter on <code>event_type</code> after deduplicating on <code>event_id</code>. Why doesn't the optimizer push the filter below the dedupe?</h2>
+  <div class="opts">
+    <div class="opt" data-k="A">Polars can't push filters into JSON scans</div>
+    <div class="opt" data-k="B" data-ok>Filtering first could change which copy of an event survives, so the result could differ</div>
+    <div class="opt" data-k="C">Filters are never pushed below sorts</div>
+  </div>
+  <div class="why callout tip small"><b>B.</b> Optimizers only apply rewrites that are guaranteed to give the same answer. Here the copies are identical so it wouldn't matter, but the optimizer can't know that.</div>
+</section>
+
+<section class="slide break" data-label="Break">
+  <div class="kicker">Break</div>
+  <h1>10-minute break</h1>
+  <div class="timer" data-minutes="10"></div>
+  <p class="lead">Next: Session 2 · Dimensional modeling</p>
+</section>
+
+<!-- ======================= SESSION 2: MODELING ======================= -->
+<section class="slide section" data-session="Session 2 · Dimensional modeling">
+  <div class="kicker">Session 2</div>
+  <h1>Dimensional modeling</h1>
+  <ul class="bullets outcomes tight">
+    <li>Declare a grain and choose facts and dimensions from it</li>
+    <li>Use surrogate keys and an unknown member</li>
+    <li>Recognize and avoid fan-out</li>
+  </ul>
+  <div class="sess-no">02</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Why model at all?</div>
+  <h2>Data modeling is the industry's sore spot</h2>
+  <div class="cols cols-3">
+    <div class="stat card c-coral"><div class="big" style="color:var(--coral)">59%</div><div class="lbl">name "pressure to move fast" as their top modeling pain</div></div>
+    <div class="stat card c-navy"><div class="big">11%</div><div class="lbl">say data modeling is going well in their organization</div></div>
+    <div class="stat card c-teal"><div class="big" style="color:var(--teal)">≈5%</div><div class="lbl">use semantic models</div></div>
+  </div>
+  <p class="xsmall muted mt-s">Source: Joe Reis, <i>2026 State of Data Engineering</i> survey (≈1,100 data practitioners).</p>
+  <div class="callout tip mt small"><b>Without a model,</b> every analyst re-joins raw tables their own way, and "revenue" has five definitions. A dimensional model is a shared, documented answer to "what happened, to whom, where, when".</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Facts and dimensions</div>
+  <h2>The star schema</h2>
+  <div class="cols cols-2 mid">
+    <div class="figure">
+      <svg viewBox="0 0 520 400" font-family="IBM Plex Sans, sans-serif" font-size="15">
+        <g stroke="#5b6472" stroke-width="2"><line x1="260" y1="200" x2="100" y2="70"/><line x1="260" y1="200" x2="420" y2="70"/><line x1="260" y1="200" x2="100" y2="330"/><line x1="260" y1="200" x2="420" y2="330"/></g>
+        <rect x="160" y="140" width="200" height="120" rx="12" fill="#1c355e"/>
+        <text x="260" y="168" fill="#ffb548" font-weight="700" text-anchor="middle">fct_order_items</text>
+        <text x="260" y="192" fill="#fff" font-size="13" text-anchor="middle">date_key · customer_key</text>
+        <text x="260" y="210" fill="#fff" font-size="13" text-anchor="middle">product_key · store_key</text>
+        <text x="260" y="236" fill="#c9efe6" font-size="13" text-anchor="middle">quantity · net_amount</text>
+        <g font-size="14">
+          <rect x="20" y="30" width="160" height="70" rx="10" fill="#fff" stroke="#00ae8d" stroke-width="2"/><text x="100" y="58" text-anchor="middle" font-weight="700" fill="#00ae8d">dim_date</text><text x="100" y="80" text-anchor="middle" fill="#5b6472" font-size="12">weekday · is_weekend</text>
+          <rect x="340" y="30" width="160" height="70" rx="10" fill="#fff" stroke="#00ae8d" stroke-width="2"/><text x="420" y="58" text-anchor="middle" font-weight="700" fill="#00ae8d">dim_product</text><text x="420" y="80" text-anchor="middle" fill="#5b6472" font-size="12">category · brand</text>
+          <rect x="20" y="300" width="160" height="70" rx="10" fill="#fff" stroke="#00ae8d" stroke-width="2"/><text x="100" y="328" text-anchor="middle" font-weight="700" fill="#00ae8d">dim_store</text><text x="100" y="350" text-anchor="middle" fill="#5b6472" font-size="12">city · name</text>
+          <rect x="340" y="300" width="160" height="70" rx="10" fill="#fff" stroke="#00ae8d" stroke-width="2"/><text x="420" y="328" text-anchor="middle" font-weight="700" fill="#00ae8d">dim_customer</text><text x="420" y="350" text-anchor="middle" fill="#5b6472" font-size="12">city · signup (no PII)</text>
+        </g>
+      </svg>
+    </div>
+    <div class="stack small">
+      <div class="card c-navy flat"><b>Fact</b>: one row per business event (an order line), with <b>measures</b> you add up and <b>keys</b> to context.</div>
+      <div class="card c-teal flat"><b>Dimension</b>: descriptive context you filter and group by: when, what, where, who.</div>
+      <div class="card c-coral flat"><b>Why it works</b>: every question is "filter dims, group by dims, sum facts". Simple for people, fast for engines.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Kimball's four steps</div>
+  <h2>Grain first, everything else follows</h2>
+  <ol class="bullets">
+    <li><b>Business process</b>: customers place orders (not "the orders table").</li>
+    <li><b>Grain</b>: <em>one row per order line</em>. Write it down; test it (unique key).</li>
+    <li><b>Dimensions</b>: whatever is single-valued at that grain: date, product, store, customer, promotion.</li>
+    <li><b>Facts</b>: numbers measured at that grain: quantity, unit price, discount, net amount.</li>
+  </ol>
+  <div class="callout warn mt small"><b>Grain mismatch is the root of most wrong numbers.</b> The delivery fee is per <i>order</i>: it can't live in a per-<i>line</i> fact. It goes in <code>fct_orders</code>.</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Three kinds of fact tables</div>
+  <h2>Transactions, snapshots, accumulating snapshots</h2>
+  <table class="t small">
+    <tr><th>Type</th><th>Grain</th><th>Qafila example</th><th>Additive over time?</th></tr>
+    <tr><td><b>Transaction</b></td><td>one row per event</td><td><code>fct_order_items</code>, payments</td><td>yes</td></tr>
+    <tr><td><b>Periodic snapshot</b></td><td>one row per entity per period</td><td>stock on hand per product per store per day</td><td>no (stock isn't summed over days)</td></tr>
+    <tr><td><b>Accumulating snapshot</b></td><td>one row per process instance, updated as it moves</td><td><code>fct_orders</code> with placed → assigned → picked → delivered times</td><td>partly</td></tr>
+  </table>
+  <div class="callout note mt small"><b>Semi-additive</b> measures (balances, stock levels) can be summed across stores but not across days: average or take the last value instead.</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Keys</div>
+  <h2>Surrogate keys and the unknown member</h2>
+  <div class="cols cols-2">
+    <div class="stack small">
+      <div class="card c-navy flat"><b>Natural key</b>: the source's ID (<code>product_id</code>, <code>national_id</code>). Can be reused, reformatted, or clash between sources.</div>
+      <div class="card c-teal flat"><b>Surrogate key</b>: an integer owned by the warehouse. Required when a dimension keeps history (SCD2 has several rows per customer) or merges sources.</div>
+      <div class="card c-coral flat"><b>Unknown member</b> (<code>-1</code>): facts whose reference is missing still join. Inner joins no longer silently drop revenue.</div>
+    </div>
+    <pre class="code s"><code class="language-sql">-- lines of erased customers keep their revenue
+SELECT ...,
+  coalesce(c.customer_key, -1) AS customer_key
+FROM order_items i
+JOIN orders o USING (order_id)
+LEFT JOIN dim_customer c
+  ON c.customer_id = o.customer_id;
+
+-- in Lab 2.2: 3,930 lines → customer_key = -1</code></pre>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Modeling styles</div>
+  <h2>Star, snowflake, one big table, Data Vault</h2>
+  <table class="t small">
+    <tr><th>Style</th><th>Shape</th><th>Good for</th><th>Watch out</th></tr>
+    <tr class="hl"><td><b>Star</b></td><td>facts + denormalized dimensions</td><td>BI, most analytics: the default</td><td>needs modeling discipline</td></tr>
+    <tr><td><b>Snowflake</b></td><td>dimensions normalized into sub-dimensions</td><td>huge, shared hierarchies</td><td>more joins for every query</td></tr>
+    <tr><td><b>One big table</b></td><td>everything pre-joined</td><td>serving: dashboards, ML features, semantic layers</td><td>rebuild on any dimension change; duplication</td></tr>
+    <tr><td><b>Data Vault</b></td><td>hubs (keys), links, satellites (history)</td><td>integrating many volatile sources, full audit</td><td>not query-friendly: put stars on top</td></tr>
+  </table>
+  <div class="callout tip mt small">A common 2026 pattern: <b>star as the source of truth</b>, wide tables or a semantic layer on top for consumers (Lab 4.4).</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">The classic mistake</div>
+  <h2>Fan-out: joining a coarse grain to a fine one</h2>
+  <div class="cols cols-2">
+    <pre class="code s"><code class="language-sql">-- ✗ the fee is repeated once per order LINE
+SELECT sum(f.net_amount + o.delivery_fee)
+FROM fct_order_items f
+JOIN orders o USING (order_id);
+
+-- ✓ sum each measure at its own grain
+SELECT (SELECT sum(net_amount)
+        FROM fct_order_items)
+     + (SELECT sum(delivery_fee)
+        FROM fct_orders) AS revenue_incl_fees;</code></pre>
+    <div class="stack small">
+      <div class="callout warn"><b>In Lab 2.2</b> the naive query overstates Qafila's revenue by about <b>1 million SAR</b> (≈14%): an order with 4 lines pays its 9 SAR fee 4 times.</div>
+      <div class="callout tip">Combine facts <b>at a shared grain</b> (per order, per day), never by joining one fact's rows to another's. Watch payments per order and events per order too.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide lab top">
+  <div class="cols cols-2">
+    <div>
+      <div class="lab-tag">Lab 2.2 · 25 min</div>
+      <h2>Model Qafila as a star schema</h2>
+      <a class="nb" href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D2_2_dimensional_modeling.ipynb" target="_blank" rel="noopener">labs/D2_2_dimensional_modeling.ipynb ↗</a>
+      <p class="small mt">Build the star by hand in SQL, reconcile it to the halala, and answer business questions with it.</p>
+    </div>
+    <ul class="checklist">
+      <li>Declare the grain and test it <span class="min">4'</span></li>
+      <li>Four dimensions, including an unknown member <span class="min">7'</span></li>
+      <li>Build the fact table and reconcile it <span class="min">6'</span></li>
+      <li>Weekend effect and National Day uplift <span class="min">5'</span></li>
+      <li>Spot and fix the fan-out trap <span class="min">3'</span></li>
+      <li class="stretch">✱ One big table vs. star: size and speed</li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide quiz">
+  <div class="kicker">Checkpoint</div>
+  <h2>Where does "number of payment attempts" belong?</h2>
+  <div class="opts">
+    <div class="opt" data-k="A">In <code>fct_order_items</code>, repeated on each line of the order</div>
+    <div class="opt" data-k="B" data-ok>In an order-grain fact (<code>fct_orders</code>) or a payment-grain fact</div>
+    <div class="opt" data-k="C">In <code>dim_customer</code></div>
+  </div>
+  <div class="why callout tip small"><b>B.</b> Attempts are measured per order (or counted from a per-payment fact). On the line fact they'd fan out; on the customer dimension they'd lose the order context.</div>
+</section>
+
+<section class="slide break" data-label="Break">
+  <div class="kicker">Long break</div>
+  <h1>20-minute break</h1>
+  <div class="timer" data-minutes="20"></div>
+  <p class="lead">Next: Session 3 · dbt: transformation as software</p>
+</section>
+
+<!-- ======================= SESSION 3: DBT ======================= -->
+<section class="slide section" data-session="Session 3 · dbt">
+  <div class="kicker">Session 3</div>
+  <h1>dbt: transformation as software</h1>
+  <ul class="bullets outcomes tight">
+    <li>Structure a project into staging, intermediate and marts</li>
+    <li>Use sources, refs and materializations, including incremental models</li>
+    <li>Read the lineage graph dbt builds for you</li>
+  </ul>
+  <div class="sess-no">03</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">What dbt does</div>
+  <h2>You write SELECTs. dbt does everything around them.</h2>
+  <div class="cols cols-2">
+    <ul class="bullets small">
+      <li>Each model is <b>one SQL file with one SELECT</b>; dbt wraps it in <code>CREATE VIEW/TABLE AS</code>.</li>
+      <li><code>ref()</code> and <code>source()</code> build a <b>dependency graph</b>: dbt runs models in order, in parallel where possible.</li>
+      <li><b>Jinja</b> templating: variables, loops, macros (reusable SQL functions).</li>
+      <li><b>YAML</b> next to the SQL: docs, tests, contracts.</li>
+      <li>The engine is <b>your warehouse</b>: DuckDB, Snowflake, BigQuery, Databricks, Postgres… dbt only sends SQL.</li>
+    </ul>
+    <pre class="code s" data-file="labs/dbt_qafila/"><code>dbt_project.yml        # name, folder configs, vars
+profiles.yml           # connection (DuckDB file)
+macros/text.sql        # normalize_arabic, to_riyadh, ...
+models/
+  staging/             # 1:1 with sources: clean, rename, cast
+    _sources.yml
+    stg_orders.sql
+  intermediate/        # reusable building blocks
+    int_delivery_timeline.sql
+  marts/               # facts + dimensions (tables)
+    fct_order_items.sql
+    _marts.yml         # docs, tests, contract
+  quarantine/          # rejected rows, with reasons
+seeds/promo_codes.csv  # small reference data
+tests/                 # singular + custom generic tests</code></pre>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">The graph</div>
+  <h2><code>source()</code> and <code>ref()</code> are edges</h2>
+  <pre class="code s" data-file="models/marts/fct_orders.sql (excerpt)"><code class="language-sql">select o.order_id, o.order_date, l.items_amount, p.paid_amount, d.delivered_at_utc
+from {{ ref('stg_orders') }} o
+left join lines l using (order_id)                       -- CTE over ref('fct_order_items')
+left join {{ ref('int_payments_per_order') }} p using (order_id)
+left join {{ ref('int_delivery_timeline') }} d using (order_id)</code></pre>
+  <div class="flow mt">
+    <div class="step c-navy"><b>source</b>raw.orders · raw.order_items · raw.payments · raw.delivery_events</div>
+    <div class="arrow">→</div>
+    <div class="step c-teal"><b>staging</b>stg_orders · stg_order_items · stg_payments · stg_delivery_events</div>
+    <div class="arrow">→</div>
+    <div class="step c-cyan"><b>intermediate</b>int_payments_per_order · int_delivery_timeline</div>
+    <div class="arrow">→</div>
+    <div class="step c-coral"><b>marts</b>fct_order_items → fct_orders → mart_daily_city_sales</div>
+  </div>
+  <div class="callout note mt small"><code>dbt run --select +fct_orders</code> = the model and everything upstream. <code>stg_orders+</code> = it and everything downstream. Orchestrators import this same graph (Day 4).</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Materializations</div>
+  <h2>How each model is stored</h2>
+  <table class="t small">
+    <tr><th>Materialization</th><th>Creates</th><th>Rebuild cost</th><th>Use for</th></tr>
+    <tr><td><b>view</b></td><td>a view (no data stored)</td><td>none, computed at query time</td><td>staging, light logic</td></tr>
+    <tr><td><b>table</b></td><td>a full table, rebuilt each run</td><td>full</td><td>dimensions, small/medium marts</td></tr>
+    <tr class="hl"><td><b>incremental</b></td><td>a table; later runs process only new/changed rows</td><td>small</td><td>large, growing facts</td></tr>
+    <tr><td><b>ephemeral</b></td><td>nothing: inlined as a CTE</td><td>none</td><td>tiny helpers</td></tr>
+    <tr><td><b>materialized view</b></td><td>a warehouse-managed MV (where supported)</td><td>managed by the warehouse</td><td>near-real-time aggregates</td></tr>
+  </table>
+</section>
+
+<section class="slide">
+  <div class="kicker">Incremental models</div>
+  <h2>Process what changed, with a look-back window</h2>
+  <div class="cols cols-2">
+    <pre class="code s" data-file="models/marts/fct_order_items.sql"><code class="language-sql">{{ config(
+    materialized='incremental',
+    unique_key='order_line_id',
+    incremental_strategy='delete+insert',
+    on_schema_change='fail') }}
+
+with orders as (
+  select * from {{ ref('stg_orders') }}
+  {% if is_incremental() %}
+  where updated_at_utc >
+    (select max(order_updated_at_utc)
+            - interval 3 day
+     from {{ this }})
+  {% endif %}
+)
+select ... from orders join ...</code></pre>
+    <div class="stack small">
+      <div class="card c-teal flat"><b><code>is_incremental()</code></b>: true when the table exists and you didn't pass <code>--full-refresh</code>.</div>
+      <div class="card c-cyan flat"><b><code>{{ this }}</code></b>: the existing table. Its max timestamp is your high-water mark.</div>
+      <div class="card c-coral flat"><b><code>unique_key</code></b> + delete+insert / merge: reprocessed rows replace old ones; no duplicates.</div>
+      <div class="card c-purple flat"><b>Look-back (3 days)</b>: catches late changes such as refunds. Size it from how late your data really is.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Macros</div>
+  <h2>Write a rule once, use it everywhere</h2>
+  <div class="cols cols-2">
+    <pre class="code s" data-file="macros/text.sql"><code class="language-sql">{% macro to_riyadh(ts) -%}
+    ({{ ts }} + INTERVAL 3 HOUR)
+{%- endmacro %}
+
+{% macro normalize_ksa_mobile(col) -%}
+  CASE WHEN regexp_full_match(
+         regexp_replace({{ col }}, '[^0-9]', '', 'g'),
+         '(966|0)?5\d{8}')
+       THEN '+966' || right(
+         regexp_replace({{ col }}, '[^0-9]', '', 'g'), 9)
+  END
+{%- endmacro %}</code></pre>
+    <pre class="code s" data-file="models/staging/stg_orders.sql"><code class="language-sql">select
+    order_id,
+    customer_id,
+    store_id,
+    status,
+    created_at::timestamp as created_at_utc,
+    {{ to_riyadh('created_at::timestamp') }}
+        as created_at_riyadh,
+    {{ to_riyadh('created_at::timestamp') }}::date
+        as order_date
+from {{ source('raw', 'orders') }}</code></pre>
+  </div>
+  <div class="callout note mt small"><code>dbt compile</code> shows the rendered SQL in <code>target/compiled/</code>: always check it when a macro misbehaves.</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">The commands you'll use</div>
+  <h2>dbt in five commands</h2>
+  <table class="t small">
+    <tr><th>Command</th><th>Does</th></tr>
+    <tr><td><code>dbt run</code></td><td>build models (views/tables/incremental) in DAG order</td></tr>
+    <tr><td><code>dbt test</code></td><td>run data tests and unit tests</td></tr>
+    <tr class="hl"><td><code>dbt build</code></td><td>seeds + models + tests together, each model tested before its children run</td></tr>
+    <tr><td><code>dbt docs generate</code></td><td>catalog + lineage site (<code>dbt docs serve</code> to browse)</td></tr>
+    <tr><td><code>dbt source freshness</code></td><td>is the raw data recent enough? (Day 4)</td></tr>
+  </table>
+  <p class="small mt-s mb0">Selectors: <code>--select staging</code> (folder) · <code>+fct_orders</code> (upstream) · <code>stg_orders+</code> (downstream) · <code>state:modified+</code> (changed in this PR, for CI)</p>
+</section>
+
+<section class="slide">
+  <div class="kicker">dbt in 2026</div>
+  <h2>One project format, two engines</h2>
+  <div class="cols cols-2">
+    <div class="stack small">
+      <div class="card c-navy"><h4>dbt v1 (Python)</h4><p class="small mb0">The engine formerly called dbt Core, used in our labs (<code>dbt-core</code> 1.12 + <code>dbt-duckdb</code>). Open source, runs anywhere Python runs.</p></div>
+      <div class="card c-teal"><h4>dbt v2 (Rust, formerly "Fusion")</h4><p class="small mb0">Generally available since September 2026. Much faster parsing, and it understands SQL: column-level lineage and errors caught before anything runs.</p></div>
+    </div>
+    <ul class="bullets small">
+      <li>dbt Labs and Fivetran merged in 2026: ingestion and transformation under one roof.</li>
+      <li>An Apache 2.0 open-source distribution remains; some features of the full distribution are under a separate license. Check licensing for your use.</li>
+      <li>Alternatives with the same "SQL as software" idea: SQLMesh, Dataform (BigQuery), Spark SQL pipelines.</li>
+      <li><b>What carries over:</b> models, refs, tests, layering. Your skills don't depend on the engine.</li>
+    </ul>
+  </div>
+  <aside class="notes">Facts from dbt Labs' and Fivetran's announcements (merger closed June 2026; dbt v2 GA at dbt Summit, September 2026). Keep the licensing point light; tell participants to check the current licence FAQ before choosing.</aside>
+</section>
+
+<section class="slide lab top">
+  <div class="cols cols-2">
+    <div>
+      <div class="lab-tag">Lab 2.3 · 25 min</div>
+      <h2>A dbt project for Qafila</h2>
+      <a class="nb" href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D2_3_dbt_project.ipynb" target="_blank" rel="noopener">labs/D2_3_dbt_project.ipynb ↗</a>
+      <p class="small mt">A copy of <code>labs/dbt_qafila</code> with two models missing. You write them, build the DAG and watch an incremental run.</p>
+    </div>
+    <ul class="checklist">
+      <li>Tour the project; list its models <span class="min">4'</span></li>
+      <li>Write <code>stg_orders</code>; build the staging layer <span class="min">6'</span></li>
+      <li>Write the incremental <code>fct_order_items</code>; build marts <span class="min">7'</span></li>
+      <li>Change a source row; watch the incremental run <span class="min">5'</span></li>
+      <li>Read the lineage from the manifest <span class="min">3'</span></li>
+      <li class="stretch">✱ Add and document a weekly category mart</li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide quiz">
+  <div class="kicker">Checkpoint</div>
+  <h2>You fixed a bug in <code>stg_orders</code> that affected all history. What must you run?</h2>
+  <div class="opts">
+    <div class="opt" data-k="A"><code>dbt run --select stg_orders</code></div>
+    <div class="opt" data-k="B"><code>dbt run --select fct_order_items</code></div>
+    <div class="opt" data-k="C" data-ok><code>dbt build --select stg_orders+ --full-refresh</code></div>
+  </div>
+  <div class="why callout tip small"><b>C.</b> Everything downstream must be rebuilt, and the incremental fact would only reprocess the look-back window without <code>--full-refresh</code>. <code>build</code> also re-runs the tests.</div>
+</section>
+
+<section class="slide break" data-label="Break">
+  <div class="kicker">Break</div>
+  <h1>10-minute break</h1>
+  <div class="timer" data-minutes="10"></div>
+  <p class="lead">Next: Session 4 · Testing &amp; data quality</p>
+</section>
+
+<!-- ======================= SESSION 4: QUALITY ======================= -->
+<section class="slide section" data-session="Session 4 · Data quality">
+  <div class="kicker">Session 4</div>
+  <h1>Testing &amp; data quality</h1>
+  <ul class="bullets outcomes tight">
+    <li>Choose the right check at the right place in the pipeline</li>
+    <li>Write data tests, unit tests and contracts in dbt; pick severities</li>
+    <li>Validate files at the door and quarantine what fails</li>
+  </ul>
+  <div class="sess-no">04</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">What "quality" means</div>
+  <h2>Six dimensions, each with a test</h2>
+  <div class="cols cols-3 gap-s">
+    <div class="card c-teal flat"><b>Uniqueness</b>: one row per key<br><span class="xsmall muted"><code>unique(order_line_id)</code></span></div>
+    <div class="card c-teal flat"><b>Completeness</b>: required values present<br><span class="xsmall muted"><code>not_null(event_at_utc)</code></span></div>
+    <div class="card c-cyan flat"><b>Validity</b>: values in the allowed set/range<br><span class="xsmall muted"><code>accepted_values(status)</code>, <code>positive(quantity)</code></span></div>
+    <div class="card c-cyan flat"><b>Consistency</b>: references and totals agree<br><span class="xsmall muted"><code>relationships</code>, payments = order totals</span></div>
+    <div class="card c-coral flat"><b>Timeliness</b>: data is fresh enough<br><span class="xsmall muted"><code>dbt source freshness</code> (Day 4)</span></div>
+    <div class="card c-coral flat"><b>Accuracy</b>: data matches reality<br><span class="xsmall muted">reconciliation with the source (Lab 1.4)</span></div>
+  </div>
+  <div class="callout note mt small">The 2026 dbt <i>State of Analytics Engineering</i> report: the importance teams place on <b>trust in data</b> rose from 66% to 83% in one year.</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Defence in depth</div>
+  <h2>Where checks live</h2>
+  <div class="flow">
+    <div class="step c-navy"><b>At the door</b>validate files and payloads before loading<br><small>Pandera · Lab 2.4</small></div>
+    <div class="arrow">→</div>
+    <div class="step c-teal"><b>In the warehouse</b>data tests on every build<br><small>dbt tests · Lab 2.4</small></div>
+    <div class="arrow">→</div>
+    <div class="step c-cyan"><b>In the logic</b>unit tests on fixed inputs<br><small>dbt unit tests · Lab 2.4</small></div>
+    <div class="arrow">→</div>
+    <div class="step c-coral"><b>Between teams</b>contracts on shape and meaning<br><small>dbt contracts · ODCS · Day 4</small></div>
+    <div class="arrow">→</div>
+    <div class="step c-purple"><b>In production</b>monitors: freshness, volume, drift<br><small>Day 4</small></div>
+  </div>
+  <div class="callout tip mt small">Each layer catches what the others can't: a unit test can't know the supplier renamed a column; a data test can't tell you which code path is wrong.</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Data tests in dbt</div>
+  <h2>Declare expectations next to the model</h2>
+  <div class="cols cols-2">
+    <pre class="code s" data-file="models/staging/_staging.yml"><code class="language-yaml">- name: stg_orders
+  columns:
+    - name: order_id
+      data_tests: [unique, not_null]
+    - name: status
+      data_tests:
+        - accepted_values:
+            arguments:
+              values: [placed, delivered, cancelled,
+                       refunded, failed_delivery]
+    - name: customer_id
+      data_tests:
+        - relationships:
+            arguments:
+              to: ref('stg_customers')
+              field: customer_id
+            config:
+              severity: warn    # 1,040 erased customers</code></pre>
+    <div class="stack small">
+      <div class="card c-teal flat"><b>Generic tests</b>: <code>unique</code>, <code>not_null</code>, <code>accepted_values</code>, <code>relationships</code>, plus your own (<code>tests/generic/positive.sql</code>).</div>
+      <div class="card c-cyan flat"><b>Singular tests</b>: any SQL in <code>tests/</code> that returns the bad rows (payments vs. order totals).</div>
+      <div class="card c-coral flat">A test <b>passes when it returns zero rows</b>. Under the hood it's just a query, so you can run it by hand.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">When a test fails</div>
+  <h2>Error, warn, or quarantine?</h2>
+  <div class="cols cols-3">
+    <div class="card c-coral"><h4>Error</h4><p class="small mb0">Stop: downstream models are skipped. For problems that make data <b>wrong</b>: broken grain, a fact without its dimension.</p></div>
+    <div class="card c-amber"><h4>Warn</h4><p class="small mb0">Continue, but tell someone. For known, tolerated issues: orphan orders after erasure. Every warning needs an owner.</p></div>
+    <div class="card c-teal"><h4>Quarantine</h4><p class="small mb0">Route bad rows to a side table with the reason; publish the rest. For row-level problems: negative quantities, bad supplier costs.</p></div>
+  </div>
+  <pre class="code s mt" data-file="models/quarantine/qrn_order_items.sql"><code class="language-sql">select *, 'non-positive quantity' as reject_reason
+from {{ ref('stg_order_items') }}
+where quantity &lt;= 0          -- and fct_order_items keeps "where quantity > 0"</code></pre>
+</section>
+
+<section class="slide">
+  <div class="kicker">Contracts and unit tests</div>
+  <h2>Guard the shape; test the logic</h2>
+  <div class="cols cols-2">
+    <pre class="code s" data-file="_marts.yml: enforced contract"><code class="language-yaml">- name: fct_order_items
+  config:
+    contract:
+      enforced: true
+  columns:
+    - name: order_line_id
+      data_type: bigint
+      constraints: [{type: not_null}]
+    - name: quantity
+      data_type: bigint
+    # ... every column, name + type</code></pre>
+    <pre class="code s" data-file="_staging.yml: unit test"><code class="language-yaml">unit_tests:
+  - name: test_supplier_costs_are_parsed
+    model: stg_supplier_prices
+    given:
+      - input: source('raw', 'supplier_prices')
+        rows:
+          - {sku: QF-2, unit_cost: "9,49"}
+          - {sku: QF-3, unit_cost: "٩٫٤٩"}
+    expect:
+      rows:
+        - {sku: QF-2, unit_cost_sar: 9.49}
+        - {sku: QF-3, unit_cost_sar: 9.49}</code></pre>
+  </div>
+  <div class="cols cols-2 mt">
+    <div class="callout note small"><b>Contract</b>: checked <i>before</i> the table is replaced. A type change fails the build instead of breaking dashboards.</div>
+    <div class="callout note small"><b>Unit test</b>: fixed inputs, expected outputs, no real data needed. Cheap: put one on every tricky rule.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Validation at the door</div>
+  <h2>Pandera: a schema for DataFrames</h2>
+  <div class="cols cols-2">
+    <pre class="code s"><code class="language-python">import pandera.polars as pa
+
+class SupplierPrice(pa.DataFrameModel):
+    supplier_id: str = pa.Field(str_startswith="SUP-")
+    sku: str = pa.Field(isin=known_skus)
+    unit_cost_sar: float = pa.Field(gt=0)
+    currency: str = pa.Field(isin=["SAR"])
+    min_order_qty: int = pa.Field(isin=[6, 12, 24, 48])
+
+try:
+    SupplierPrice.validate(prices, lazy=True)
+except pa.errors.SchemaErrors as e:
+    failures = e.failure_cases   # one row per failure
+    # → quarantine those rows, load the rest,
+    #   send the list back to the supplier</code></pre>
+    <div class="stack small">
+      <div class="card c-teal flat"><b><code>lazy=True</code></b> collects every failure instead of stopping at the first: one report to send back.</div>
+      <div class="card c-cyan flat">Works on pandas, Polars and PySpark DataFrames. Alternatives: Great Expectations, Soda, dlt schema contracts.</div>
+      <div class="card c-coral flat"><b>Lab 2.4 result</b>: weeks 36–38 pass once parsed correctly; week 39 has 4 bad costs and 3 unknown SKUs quarantined.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Tests in CI</div>
+  <h2>Run the tests before the merge, not after the incident</h2>
+  <div class="cols cols-2">
+    <pre class="code s" data-file=".github/workflows/dbt.yml (sketch)"><code class="language-yaml">on: pull_request
+jobs:
+  dbt:
+    steps:
+      - uses: actions/checkout@v4
+      - run: uv sync
+      - run: dbt deps
+      # only what changed, plus everything downstream,
+      # compared with production's manifest
+      - run: dbt build --select state:modified+
+               --defer --state prod-artifacts/</code></pre>
+    <ul class="bullets small">
+      <li><b>Slim CI</b>: build only modified models and their children; defer unchanged parents to production.</li>
+      <li>Separate <b>dev / CI / prod</b> targets: a PR never writes to production schemas.</li>
+      <li>Block the merge when an <b>error</b> test fails; post <b>warnings</b> as a PR comment.</li>
+      <li>Review SQL like code: the reviewer reads <code>target/compiled</code>, not just the Jinja.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide lab top">
+  <div class="cols cols-2">
+    <div>
+      <div class="lab-tag">Lab 2.4 · 25 min</div>
+      <h2>Make it trustworthy</h2>
+      <a class="nb" href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D2_4_data_quality.ipynb" target="_blank" rel="noopener">labs/D2_4_data_quality.ipynb ↗</a>
+      <p class="small mt">Tests that catch real Qafila problems, a contract that stops a breaking change, and a quarantine for supplier files.</p>
+    </div>
+    <ul class="checklist">
+      <li>Run the existing tests; read warn vs. error <span class="min">4'</span></li>
+      <li>Add a relationships test that finds real orphans <span class="min">6'</span></li>
+      <li>Contract: watch a type change break the build <span class="min">5'</span></li>
+      <li>Unit test the mobile normalization <span class="min">5'</span></li>
+      <li>Pandera on supplier files; quarantine bad rows <span class="min">5'</span></li>
+      <li class="stretch">✱ Store test failures and query them</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ======================= WRAP-UP ======================= -->
+<section class="slide" data-label="Day 2 wrap-up">
+  <div class="kicker">Day 2 deliverable</div>
+  <h2>What you built today</h2>
+  <div class="flow">
+    <div class="step c-navy"><b>Bronze</b>raw.*</div>
+    <div class="arrow">→</div>
+    <div class="step c-teal"><b>Silver</b>UTC, deduped, E.164, normalized Arabic</div>
+    <div class="arrow">→</div>
+    <div class="step c-cyan"><b>Gold</b>star schema in dbt, incremental fact</div>
+    <div class="arrow">→</div>
+    <div class="step c-coral"><b>Trust</b>tests · contract · unit tests · quarantine</div>
+  </div>
+  <div class="cols cols-3 mt">
+    <div class="card c-teal"><h4>Remember</h4><p class="small mb0">Declare the grain, test it, and sum each measure at its own grain.</p></div>
+    <div class="card c-cyan"><h4>Remember</h4><p class="small mb0">Incremental models need a unique key and a look-back window.</p></div>
+    <div class="card c-coral"><h4>Remember</h4><p class="small mb0">Every check needs a severity and an owner: error, warn or quarantine.</p></div>
+  </div>
+</section>
+
+<section class="slide" data-label="Capstone">
+  <div class="kicker">Capstone</div>
+  <h2>Teams formed? Write your one-page plan tonight</h2>
+  <div class="cols cols-2">
+    <ol class="bullets small">
+      <li><b>Sources</b>: at least two types (DB, API, files, events).</li>
+      <li><b>Grain</b> of each fact table, in one sentence.</li>
+      <li><b>Layers</b>: what bronze, silver and gold contain.</li>
+      <li><b>Checks</b>: three tests you'll write first, and their severity.</li>
+      <li><b>Refresh</b>: how often, and what "late" means.</li>
+    </ol>
+    <div class="callout tip small"><b>Reuse the labs.</b> <code>labs/dbt_qafila</code> is a working starting point; the capstone kit (Day 4) adds an orchestrated pipeline and a README template.</div>
+  </div>
+</section>
+
+<section class="slide dark" data-label="Next">
+  <div class="kicker">Tomorrow · Day 3</div>
+  <h1>Lakehouse, Scale &amp; Streaming</h1>
+  <p class="lead mt">Open table formats, distributed processing, and data that never stops arriving.</p>
+  <div class="cols cols-4 gap-s mt">
+    <div class="card c-teal"><h4>Apache Iceberg</h4><p class="small mb0">Snapshots, time travel, schema evolution</p></div>
+    <div class="card c-cyan"><h4>Spark</h4><p class="small mb0">Partitions, shuffles, joins, skew</p></div>
+    <div class="card c-coral"><h4>Streaming</h4><p class="small mb0">Logs, offsets, windows, watermarks</p></div>
+    <div class="card c-amber"><h4>Streams → tables</h4><p class="small mb0">Exactly-once sinks, compaction</p></div>
+  </div>
+</section>
+
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="../assets/logo.js"></script>
+<script src="../assets/deck.js"></script>
+</body>
+</html>
