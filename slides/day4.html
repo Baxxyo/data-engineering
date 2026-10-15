@@ -1,0 +1,762 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Day 4 · Modern Data Engineering</title>
+<link rel="icon" href="../assets/img/academy.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+Arabic:wght@400;600;700&family=IBM+Plex+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+<link rel="stylesheet" href="../assets/deck.css">
+</head>
+<body>
+<div class="deck" data-day="Day 4" data-course="Modern Data Engineering">
+
+<!-- ======================= OPENING ======================= -->
+<section class="slide title" data-label="Welcome">
+  <div class="kicker">SDAIA Academy · Modern Data Engineering</div>
+  <h1>Operate, Govern &amp; Serve</h1>
+  <p class="lead mt">Day 4: run it on a schedule, know when it breaks, protect people's data, and feed AI</p>
+  <div class="meta">
+    <span class="track">Data Engineering Track</span>
+    <span>Day 4 of 5</span>
+    <span>Dagster · ODCS · PDPL · Semantic layers · Embeddings</span>
+  </div>
+</section>
+
+<section class="slide" data-label="Recap">
+  <div class="kicker">Where we are</div>
+  <h2>We can build pipelines. Today we make them production-grade.</h2>
+  <div class="flow">
+    <div class="step c-navy"><b>Days 1–3</b>ingest · model · test · scale · stream</div>
+    <div class="arrow">→</div>
+    <div class="step c-teal"><b>Operate</b>orchestration, backfills<br><small>Session 1</small></div>
+    <div class="arrow">→</div>
+    <div class="step c-cyan"><b>Observe</b>contracts, monitors<br><small>Session 2</small></div>
+    <div class="arrow">→</div>
+    <div class="step c-coral"><b>Govern</b>classify, protect, erase<br><small>Session 3</small></div>
+    <div class="arrow">→</div>
+    <div class="step c-purple"><b>Serve AI</b>metrics, embeddings<br><small>Session 4</small></div>
+  </div>
+  <div class="callout tip mt small"><b>Why today matters:</b> in the 2026 dbt State of Analytics Engineering report, the share of teams calling <b>trust in data</b> a top priority rose from 66% to 83%. Trust is built by the boring parts: schedules, checks, owners and access rules.</div>
+</section>
+
+<section class="slide" data-label="Agenda">
+  <div class="kicker">Today</div>
+  <h2>Day 4 agenda</h2>
+  <div class="agenda">
+    <div class="item"><span><b>Session 1 · Orchestration</b><small>Tasks vs. assets, Dagster and Airflow 3, partitions, backfills, schedules, sensors</small></span><span class="d">50 min</span></div>
+    <div class="item brk"><span>Break</span><span class="d">10 min</span></div>
+    <div class="item"><span><b>Session 2 · Observability &amp; data contracts</b><small>Freshness, volume, schema, lineage; ODCS contracts; breaking changes</small></span><span class="d">50 min</span></div>
+    <div class="item brk"><span>Long break</span><span class="d">20 min</span></div>
+    <div class="item"><span><b>Session 3 · Governance, security &amp; privacy</b><small>PDPL, NDMO classification, PII discovery, pseudonymization, masking, erasure</small></span><span class="d">50 min</span></div>
+    <div class="item brk"><span>Break</span><span class="d">10 min</span></div>
+    <div class="item"><span><b>Session 4 · Data for AI + capstone kickoff</b><small>Semantic layers, embeddings, safe text-to-SQL, then your capstone</small></span><span class="d">50 min</span></div>
+  </div>
+</section>
+
+<!-- ======================= SESSION 1: ORCHESTRATION ======================= -->
+<section class="slide section" data-session="Session 1 · Orchestration">
+  <div class="kicker">Session 1</div>
+  <h1>Orchestration</h1>
+  <ul class="bullets outcomes tight">
+    <li>Explain what an orchestrator does beyond cron</li>
+    <li>Model a pipeline as assets with dependencies, partitions and checks</li>
+    <li>Run idempotent backfills, schedules and sensors</li>
+  </ul>
+  <div class="sess-no">01</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Beyond cron</div>
+  <h2>What an orchestrator gives you</h2>
+  <div class="cols cols-3 gap-s">
+    <div class="card c-teal"><h4>Order</h4><p class="small mb0">Run steps in dependency order, in parallel where possible. No more "the 02:00 job finished at 02:40, the 02:30 job read half-written data".</p></div>
+    <div class="card c-cyan"><h4>Recovery</h4><p class="small mb0">Retries with back-off, re-run from the failed step, <b>backfills</b> of past dates.</p></div>
+    <div class="card c-coral"><h4>Triggers</h4><p class="small mb0">Schedules, sensors (a file landed, an upstream table changed), manual runs.</p></div>
+    <div class="card c-purple"><h4>Visibility</h4><p class="small mb0">Run history, logs, lineage graph, how long each step takes, what's stale.</p></div>
+    <div class="card c-navy"><h4>Alerting</h4><p class="small mb0">Failures and failed checks go to the owner: Slack, email, on-call.</p></div>
+    <div class="card c-amber"><h4>Configuration</h4><p class="small mb0">Same code in dev, staging and prod with different resources and secrets.</p></div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Two mental models</div>
+  <h2>Tasks vs. assets</h2>
+  <div class="cols cols-2">
+    <div class="card c-navy"><h4>Task-based (Airflow 2 style)</h4>
+      <pre class="code s"><code class="language-python">extract &gt;&gt; load &gt;&gt; transform &gt;&gt; publish</code></pre>
+      <p class="small mb0">The orchestrator knows <b>steps</b> ran. Which tables they produced, and whether those are fresh, lives in your head.</p></div>
+    <div class="card c-teal"><h4>Asset-based (Dagster, Airflow 3 assets)</h4>
+      <pre class="code s"><code class="language-python">@dg.asset(deps=[raw_orders])
+def fct_orders(): ...</code></pre>
+      <p class="small mb0">The orchestrator knows <b>data</b>: what each table depends on, when it was last built, whether its checks passed.</p></div>
+  </div>
+  <div class="callout tip mt small">"Rebuild everything downstream of the courier events" becomes one selection instead of a hand-maintained task list (Lab 4.1, Task 2).</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">The landscape</div>
+  <h2>Orchestrators in 2026</h2>
+  <table class="t small">
+    <tr><th>Tool</th><th>Model</th><th>Notes</th></tr>
+    <tr><td><b>Apache Airflow 3</b></td><td>DAGs of tasks + <b>assets</b></td><td>The most deployed. Airflow 3 (2025) added asset-aware and event-driven scheduling, DAG versioning, a new UI and a task SDK. Managed: MWAA, Cloud Composer, Astronomer.</td></tr>
+    <tr class="hl"><td><b>Dagster</b></td><td>software-defined assets</td><td>Lineage, partitions, asset checks and dbt integration built in. Used in the labs.</td></tr>
+    <tr><td><b>Prefect</b></td><td>Python flows and tasks</td><td>Lightweight, dynamic workflows, easy local start.</td></tr>
+    <tr><td><b>Built into platforms</b></td><td>jobs / workflows</td><td>Databricks Workflows, Snowflake tasks, dbt platform jobs, Fabric pipelines: fine when everything lives in one platform.</td></tr>
+  </table>
+  <div class="callout note mt small">Pick by team and platform, not by feature lists. The concepts (dependencies, partitions, idempotency, checks) transfer.</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Dagster</div>
+  <h2>Assets, dbt models and checks in one graph</h2>
+  <div class="cols cols-2">
+    <pre class="code s" data-file="Lab 4.1"><code class="language-python">@dg.asset(key=["raw", "delivery_events"])
+def raw_delivery_events():
+    sql("CREATE OR REPLACE TABLE raw.delivery_events AS ...")
+    return dg.MaterializeResult(metadata={"rows": n})
+
+@dbt_assets(manifest=DBT / "target/manifest.json")
+def qafila_dbt(context, dbt: DbtCliResource):
+    yield from dbt.cli(["build"], context=context).stream()
+
+selection = dg.AssetSelection.keys(
+    ["raw", "delivery_events"]).downstream()
+dg.materialize([...], selection=selection)</code></pre>
+    <ul class="bullets small">
+      <li>The key <code>raw/delivery_events</code> matches dbt's <code>source('raw', 'delivery_events')</code>: Python ingestion and SQL models join into <b>one lineage graph</b>.</li>
+      <li>Every <b>dbt test</b> becomes an <b>asset check</b>.</li>
+      <li>In Lab 4.1, the selection rebuilds 4 dbt models and runs 9 tests; unrelated marts are left alone.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Partitions and backfills</div>
+  <h2>One partition per day, and every run is idempotent</h2>
+  <div class="cols cols-2">
+    <pre class="code s" data-file="Lab 4.1"><code class="language-python">DAYS = dg.DailyPartitionsDefinition(start_date="2026-09-24")
+
+@dg.asset(partitions_def=DAYS)
+def delivery_events_daily(context):
+    day = context.partition_key
+    sql("DELETE FROM ops.delivery_events_daily "
+        "WHERE day = $day", {"day": day})
+    sql(f"INSERT INTO ops.delivery_events_daily "
+        f"{LOAD_SQL}", {"day": day})</code></pre>
+    <div class="stack small">
+      <div class="callout tip"><b>Delete-then-insert per partition</b> (or <code>MERGE</code>, or partition overwrite) makes a re-run produce the same table. Lab 4.1: 22,518 rows after the backfill, 22,518 after re-running Sep 27.</div>
+      <div class="callout warn">An <b>append</b>-only partition doubles its rows on every retry. Backfills and retries are normal operations: design for them.</div>
+      <div class="callout note">Partition by the date the data <b>arrived</b> for loads (yesterday's file), by <b>event</b> date for analytics.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Asset checks</div>
+  <h2>Blocking checks stop bad data from spreading</h2>
+  <div class="cols cols-2">
+    <pre class="code s" data-file="Lab 4.1"><code class="language-python">@dg.asset_check(asset=delivery_events_daily,
+                blocking=True)
+def no_duplicate_events(context):
+    dupes = sql("SELECT count(*) - count(DISTINCT event_id) "
+                "FROM ops.delivery_events_daily "
+                "WHERE day = $day", {"day": day})[0][0]
+    return dg.AssetCheckResult(
+        passed=dupes == 0, metadata={"duplicates": dupes})</code></pre>
+    <div class="stack small">
+      <div class="callout warn">First backfill: every day fails the check (<b>312 duplicate events</b> across 7 days), so <code>daily_delivery_kpis</code> is <b>skipped</b>, not computed from bad data.</div>
+      <div class="callout tip">Fix the load (keep one row per <code>event_id</code>), backfill again: all 7 partitions pass.</div>
+      <div class="callout note"><b>Blocking</b> when downstream damage is expensive (finance, customer-facing); <b>warn</b> when a human should look but the data is still useful.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Triggers</div>
+  <h2>Schedules, sensors and retries</h2>
+  <div class="cols cols-3 gap-s">
+    <div class="card c-teal"><h4>Schedule</h4>
+      <pre class="code s"><code class="language-python">dg.build_schedule_from_partitioned_job(
+    daily_job, hour_of_day=1,
+    minute_of_hour=30)
+# 2026-09-28 01:30 → runs 2026-09-27</code></pre></div>
+    <div class="card c-cyan"><h4>Sensor</h4>
+      <pre class="code s"><code class="language-python">@dg.sensor(job=supplier_job)
+def supplier_files(context):
+    for f in SUPPLIERS.glob("*.csv"):
+        yield dg.RunRequest(
+            run_key=f.name)</code></pre></div>
+    <div class="card c-coral"><h4>Retry policy</h4>
+      <pre class="code s"><code class="language-python">@dg.asset(retry_policy=
+  dg.RetryPolicy(max_retries=3,
+                 delay=1))
+def payments_page(): ...
+# 429 → retried → success</code></pre></div>
+  </div>
+  <div class="callout tip mt small">A sensor's <code>run_key</code> makes it idempotent: the same supplier file never launches two runs, however often the sensor ticks.</div>
+</section>
+
+<section class="slide lab top">
+  <div class="cols cols-2">
+    <div>
+      <div class="lab-tag">Lab 4.1 · 25 min</div>
+      <h2>Orchestrating Qafila with Dagster</h2>
+      <a class="nb" href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D4_1_orchestration_dagster.ipynb" target="_blank" rel="noopener">labs/D4_1_orchestration_dagster.ipynb ↗</a>
+      <p class="small mt">Ingestion assets, the dbt project as assets, a partitioned backfill, a blocking check, and triggers. All in-process: no server.</p>
+    </div>
+    <ul class="checklist">
+      <li>Ingestion as software-defined assets <span class="min">5'</span></li>
+      <li>The dbt project as assets: one lineage graph <span class="min">6'</span></li>
+      <li>A daily-partitioned asset and a backfill <span class="min">6'</span></li>
+      <li>A blocking asset check catches bad data <span class="min">5'</span></li>
+      <li>Schedules and sensors <span class="min">3'</span></li>
+      <li class="stretch">✱ Retries against a flaky API</li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide quiz">
+  <div class="kicker">Checkpoint</div>
+  <h2>A backfill re-runs 30 days of an asset that does <code>INSERT INTO ... SELECT</code> for its day. What happens?</h2>
+  <div class="opts">
+    <div class="opt" data-k="A">Nothing: the orchestrator skips days that already succeeded</div>
+    <div class="opt" data-k="B" data-ok>Every re-run day now has its rows twice</div>
+    <div class="opt" data-k="C">The insert fails because the rows already exist</div>
+  </div>
+  <div class="why callout tip small"><b>B.</b> A backfill runs what you ask it to; tables without a unique constraint accept duplicates silently. Delete-then-insert, <code>MERGE</code> or overwrite the partition, and add a duplicate check.</div>
+</section>
+
+<section class="slide break" data-label="Break">
+  <div class="kicker">Break</div>
+  <h1>10-minute break</h1>
+  <div class="timer" data-minutes="10"></div>
+  <p class="lead">Next: Session 2 · Observability &amp; data contracts</p>
+</section>
+
+<!-- ======================= SESSION 2: OBSERVABILITY & CONTRACTS ======================= -->
+<section class="slide section" data-session="Session 2 · Observability & contracts">
+  <div class="kicker">Session 2</div>
+  <h1>Observability &amp; data contracts</h1>
+  <ul class="bullets outcomes tight">
+    <li>Monitor the five pillars of data observability</li>
+    <li>Write an executable data contract in ODCS</li>
+    <li>Tell breaking from non-breaking changes, and who to tell</li>
+  </ul>
+  <div class="sess-no">02</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Data observability</div>
+  <h2>Five things to watch on every important table</h2>
+  <div class="cols cols-3 gap-s">
+    <div class="card c-teal"><h4>Freshness</h4><p class="small mb0">When did it last change? Is that later than promised?</p></div>
+    <div class="card c-cyan"><h4>Volume</h4><p class="small mb0">Did today's load bring roughly the expected number of rows?</p></div>
+    <div class="card c-coral"><h4>Schema</h4><p class="small mb0">Columns added, removed, renamed, retyped.</p></div>
+    <div class="card c-purple"><h4>Distribution</h4><p class="small mb0">Null rates, value ranges, category mix drifting.</p></div>
+    <div class="card c-navy"><h4>Lineage</h4><p class="small mb0">What feeds this table, and who reads it? Who must be told?</p></div>
+    <div class="card c-amber"><h4>+ Cost</h4><p class="small mb0">FinOps: which models and queries burn the budget? Track it like any other metric.</p></div>
+  </div>
+  <div class="callout note mt small">Tests check what you <b>expect</b>. Monitors catch what you didn't think to test. You need both. Tools: Elementary, Soda, Monte Carlo, Datadog, plus orchestrator freshness checks and <b>OpenLineage</b> for cross-tool lineage.</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Monitors that people don't mute</div>
+  <h2>A naive volume monitor cries wolf every weekend</h2>
+  <div class="cols cols-2 mid">
+    <table class="t small">
+      <tr><th>Baseline for "expected orders"</th><th>Alerts in Aug–Sep</th></tr>
+      <tr><td>median of the previous 7 days, ±20%</td><td><b>16</b>: 14 of them ordinary Thursdays and Fridays (+25% peaks)</td></tr>
+      <tr class="hl"><td>median of the <b>same weekday</b> over 4 weeks, ±30%</td><td><b>2</b>: National Day (+102%, on the calendar) and Sep 29 (−57%, the incident)</td></tr>
+    </table>
+    <div class="stack small">
+      <div class="callout warn">A monitor that alerts every week gets muted, and then misses the real incident.</div>
+      <div class="callout tip">Model <b>seasonality</b> (weekday, Ramadan, month-end), keep a <b>calendar</b> of planned events, and route alerts to the table's <b>owner</b>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Data contracts</div>
+  <h2>An agreement between producer and consumers, in code</h2>
+  <div class="cols cols-2">
+    <ul class="bullets small">
+      <li><b>Schema</b>: fields, types, keys, required, unique.</li>
+      <li><b>Semantics</b>: what each field means, units, what's excluded.</li>
+      <li><b>Quality rules</b>: row counts, valid values, custom SQL.</li>
+      <li><b>Service levels</b>: latency, frequency, retention, support hours.</li>
+      <li><b>People</b>: owner, consumers, support channel; <b>classification</b> of sensitive fields.</li>
+    </ul>
+    <div class="stack small">
+      <div class="callout tip"><b>Open Data Contract Standard</b> (ODCS, Bitol project, Linux Foundation AI &amp; Data): one vendor-neutral YAML format. v3.1 is the current release; v3.2 is in development.</div>
+      <div class="callout note">Contracts sit at team <b>boundaries</b>: a provider's feed, a domain's published tables, a mart other teams build on. Not every staging model needs one.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">ODCS in practice</div>
+  <h2>The payments feed contract (excerpt)</h2>
+  <div class="cols cols-32">
+    <pre class="code s" data-file="contracts/payments.odcs.yaml"><code class="language-yaml">apiVersion: v3.1.0
+kind: DataContract
+team:
+  - {username: payments-provider-integration, role: owner}
+schema:
+  - name: payments
+    quality:
+      - type: sql
+        query: SELECT count(*) FROM {object} WHERE amount &lt;= 0
+        mustBe: 0
+    properties:
+      - name: status
+        required: true
+        quality:
+          - metric: invalidValues
+            arguments: {validValues: [captured, failed, refunded]}
+            mustBe: 0
+slaProperties:
+  - {property: latency, value: 1, unit: d}</code></pre>
+    <div class="stack small">
+      <div class="callout warn"><b>Lab 4.2:</b> 26 of 27 checks pass. The contract finds <b>16 payments with amount ≤ 0</b>: now it's a breach with an <b>owner</b> and a support channel, not "weird data".</div>
+      <div class="callout tip">The same file generates dbt tests (Lab 4.2 ✱) and orchestrator checks (<code>capstone/pipeline.py</code>). Tooling: the <code>datacontract</code> CLI.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Change management</div>
+  <h2>Breaking or not?</h2>
+  <table class="t small">
+    <tr><th>Change (from the consumer's side)</th><th>Breaking?</th><th>Why</th></tr>
+    <tr><td>Column removed or renamed (<code>amount</code> → <code>amount_sar</code>)</td><td>✗ yes</td><td>queries fail</td></tr>
+    <tr><td>Type changed (<code>card_last4</code> string → integer)</td><td>✗ yes</td><td>leading zeros lost, joins and casts break</td></tr>
+    <tr><td>New allowed value (<code>status = 'chargeback'</code>)</td><td>✗ yes</td><td>consumers' <code>CASE</code> logic silently mishandles it</td></tr>
+    <tr><td>Required field becomes optional</td><td>✗ yes</td><td>unexpected nulls</td></tr>
+    <tr><td>New column; optional field becomes required; fewer allowed values</td><td>✓ no</td><td>existing queries keep working</td></tr>
+  </table>
+  <div class="callout tip mt small"><b>Breaking → new major version</b>, published next to the old one with a migration window. Run the contract diff in the producer's CI; use <b>lineage</b> to list who must migrate (Lab 4.2: 4 models and 7 tests read <code>raw.payments</code>).</div>
+</section>
+
+<section class="slide lab top">
+  <div class="cols cols-2">
+    <div>
+      <div class="lab-tag">Lab 4.2 · 25 min</div>
+      <h2>Data contracts and observability</h2>
+      <a class="nb" href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D4_2_contracts_observability.ipynb" target="_blank" rel="noopener">labs/D4_2_contracts_observability.ipynb ↗</a>
+      <p class="small mt">Write and enforce the payments contract, judge the provider's v2, and build monitors that don't cry wolf.</p>
+    </div>
+    <ul class="checklist">
+      <li>Read the contract; add the <code>status</code> property <span class="min">5'</span></li>
+      <li>Validate the feed against the contract <span class="min">7'</span></li>
+      <li>The provider proposes v2: breaking or not? <span class="min">5'</span></li>
+      <li>Freshness and volume monitors <span class="min">6'</span></li>
+      <li>Impact analysis with dbt lineage <span class="min">2'</span></li>
+      <li class="stretch">✱ Generate dbt tests from the contract</li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide quiz">
+  <div class="kicker">Checkpoint</div>
+  <h2>The payment provider adds <code>'chargeback'</code> as a new <code>status</code> value. Breaking for consumers?</h2>
+  <div class="opts">
+    <div class="opt" data-k="A">No: no column was added or removed</div>
+    <div class="opt" data-k="B" data-ok>Yes: code that handles every known status will mishandle the new one, often silently</div>
+    <div class="opt" data-k="C">Only if the column type changes</div>
+  </div>
+  <div class="why callout tip small"><b>B.</b> Think of revenue logic like <code>CASE WHEN status = 'refunded' THEN 0 ELSE amount END</code>: chargebacks would count as revenue. Widening an enum is a breaking change.</div>
+</section>
+
+<section class="slide break" data-label="Long break">
+  <div class="kicker">Long break</div>
+  <h1>20-minute break</h1>
+  <div class="timer" data-minutes="20"></div>
+  <p class="lead">Next: Session 3 · Governance, security &amp; privacy</p>
+</section>
+
+<!-- ======================= SESSION 3: GOVERNANCE ======================= -->
+<section class="slide section" data-session="Session 3 · Governance & privacy">
+  <div class="kicker">Session 3</div>
+  <h1>Governance, security &amp; privacy</h1>
+  <ul class="bullets outcomes tight">
+    <li>Relate PDPL and NDMO requirements to concrete pipeline features</li>
+    <li>Discover, classify and protect personal data</li>
+    <li>Implement and verify a right-to-erasure request</li>
+  </ul>
+  <div class="sess-no">03</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">The Saudi context</div>
+  <h2>PDPL and NDMO, from a data engineer's seat</h2>
+  <div class="cols cols-2">
+    <div class="stack dense">
+      <div class="card c-teal flat"><b>PDPL</b> (Personal Data Protection Law, enforced since September 2024; SDAIA is the competent authority): lawful purpose, data minimization, data subjects' rights (access, correction, <b>erasure</b>), breach notification, conditions on transfers outside the Kingdom.</div>
+      <div class="card c-cyan flat"><b>NDMO</b> data management and personal data protection standards: governance roles, data catalog, quality, and <b>classification</b> in four levels: <b>Top Secret, Secret, Restricted, Public</b>.</div>
+    </div>
+    <table class="t small">
+      <tr><th>Requirement</th><th>Pipeline feature</th></tr>
+      <tr><td>Know what you hold</td><td>PII discovery, catalog tags</td></tr>
+      <tr><td>Minimize, limit access</td><td>masked views, role grants, pseudonyms</td></tr>
+      <tr><td>Erase on request</td><td>deletes + snapshot expiry + orphan cleanup</td></tr>
+      <tr><td>Keep data in the Kingdom</td><td>storage region, backups, LLM endpoints</td></tr>
+      <tr><td>Show compliance</td><td>lineage, access logs, retention jobs</td></tr>
+    </table>
+  </div>
+  <p class="xsmall muted mt-s mb0">Engineering view only, not legal advice: your organization's DPO and policies decide classifications and retention.</p>
+</section>
+
+<section class="slide">
+  <div class="kicker">Discovery</div>
+  <h2>Find personal data by content, then confirm with checksums</h2>
+  <div class="cols cols-2">
+    <pre class="code s" data-file="Lab 4.3"><code class="language-python">def is_saudi_id(s):            # national ID / Iqama
+    if not (len(s) == 10 and s.isdigit()
+            and s[0] in "12"):   # 1 citizen, 2 resident
+        return False
+    total = 0
+    for i, ch in enumerate(reversed(s)):
+        d = int(ch) * (2 if i % 2 else 1)
+        total += d - 9 if d &gt; 9 else d
+    return total % 10 == 0       # Luhn
+
+def is_saudi_iban(s):          # SA + 22, ISO 13616
+    r = s[4:] + s[:4]
+    return int("".join(str(int(c, 36))
+               for c in r)) % 97 == 1</code></pre>
+    <div class="stack small">
+      <div class="callout note">Column names lie (<code>notes</code>, <code>ref</code>, <code>extra_1</code>). Lab 4.3 finds national IDs, IBANs, mobiles and emails hiding in <b>free-text support notes</b>.</div>
+      <div class="callout tip">A regex finds 83 ten-digit candidates in the notes; the Luhn check keeps <b>77</b> real IDs and drops the tracking numbers.</div>
+      <div class="callout warn">Some PII has no pattern (names, addresses): declare it in the catalog.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Protection techniques</div>
+  <h2>Mask, pseudonymize, anonymize, encrypt</h2>
+  <table class="t small">
+    <tr><th>Technique</th><th>Example</th><th>Reversible?</th><th>Still personal data?</th></tr>
+    <tr><td><b>Masking</b></td><td><code>+9665•••••24</code>, <code>a•••@gmail.com</code></td><td>no (for the viewer)</td><td>the base table is</td></tr>
+    <tr class="hl"><td><b>Pseudonymization</b></td><td>HMAC-SHA256(national ID, secret key)</td><td>by whoever holds the key</td><td><b>yes</b></td></tr>
+    <tr><td><b>Anonymization</b></td><td>aggregates, k-anonymity, differential privacy</td><td>no</td><td>no, if done properly (hard!)</td></tr>
+    <tr><td><b>Encryption</b></td><td>at rest, in transit, per column</td><td>with the key</td><td>yes</td></tr>
+  </table>
+  <div class="cols cols-2 mt">
+    <div class="callout warn small"><b>Plain hashing isn't pseudonymization.</b> Lab 4.3: an attacker with 500 leaked IDs re-identifies all 500 from unsalted SHA-256 hashes; with HMAC and no key, zero.</div>
+    <div class="callout tip small">HMAC tokens still let analysts find the <b>58 people with two accounts</b>, without seeing a single ID.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Access control</div>
+  <h2>Each role sees only what it needs</h2>
+  <div class="cols cols-2">
+    <pre class="code s" data-file="Lab 4.3"><code class="language-sql">CREATE VIEW analyst.customers AS
+SELECT pseudo(national_id) AS person_token,
+       customer_id, city, district,
+       lower(split_part(email, '@', 2))
+           AS email_domain,
+       created_at
+FROM main.customers;
+
+CREATE VIEW support.customers AS
+SELECT customer_id, full_name, email,
+       mask_mobile(mobile) AS mobile, city
+FROM main.customers;</code></pre>
+    <div class="stack small">
+      <div class="card c-navy flat"><b>RBAC</b>: roles get grants on schemas/views, never on raw PII tables.</div>
+      <div class="card c-teal flat"><b>Policies in the platform</b>: column masks and row filters (Snowflake, BigQuery, Unity Catalog) apply in every tool, not just one view.</div>
+      <div class="card c-coral flat"><b>Tag-based</b>: classify once (<code>Secret</code>), and the policy follows the tag to every table.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Right to erasure</div>
+  <h2><code>DELETE</code> is only step one</h2>
+  <div class="flow">
+    <div class="step c-navy"><b>1 · Delete</b>new snapshot without the row</div>
+    <div class="arrow">→</div>
+    <div class="step c-teal"><b>2 · Expire</b>old snapshots: no time travel</div>
+    <div class="arrow">→</div>
+    <div class="step c-cyan"><b>3 · Remove orphans</b>unreferenced files leave the disk</div>
+    <div class="arrow">→</div>
+    <div class="step c-coral"><b>4 · Verify</b>scan files: the ID is gone</div>
+  </div>
+  <div class="cols cols-2 mt">
+    <div class="callout warn small"><b>Lab 4.3:</b> after the delete, the current table has 0 rows for the customer, but time travel returns 1 and a Parquet file on disk still holds their national ID, until steps 2–3.</div>
+    <div class="callout note small"><b>Also:</b> derived tables and incremental models, backups, partner exports, column stats in old manifests. At scale: batch erasures weekly, or <b>crypto-shredding</b> (per-person keys, delete the key).</div>
+  </div>
+</section>
+
+<section class="slide lab top">
+  <div class="cols cols-2">
+    <div>
+      <div class="lab-tag">Lab 4.3 · 25 min</div>
+      <h2>Governance, security and privacy</h2>
+      <a class="nb" href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D4_3_governance_privacy.ipynb" target="_blank" rel="noopener">labs/D4_3_governance_privacy.ipynb ↗</a>
+      <p class="small mt">Find Saudi PII by content, classify it, pseudonymize it, mask it per role, and erase a customer for real.</p>
+    </div>
+    <ul class="checklist">
+      <li>PII discovery: validators, not just regexes <span class="min">6'</span></li>
+      <li>Classify every column (NDMO levels) <span class="min">4'</span></li>
+      <li>Pseudonymize with a keyed hash <span class="min">5'</span></li>
+      <li>Masked views per role <span class="min">5'</span></li>
+      <li>Right to erasure on Iceberg, verified <span class="min">5'</span></li>
+      <li class="stretch">✱ Redact free text before it reaches an LLM</li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide quiz">
+  <div class="kicker">Checkpoint</div>
+  <h2>You replaced national IDs with SHA-256 hashes (no key). Is the table anonymized?</h2>
+  <div class="opts">
+    <div class="opt" data-k="A">Yes: SHA-256 can't be reversed</div>
+    <div class="opt" data-k="B" data-ok>No: anyone with candidate IDs can hash them and match; at best it's pseudonymized, and weakly</div>
+    <div class="opt" data-k="C">Yes, as long as the column is renamed</div>
+  </div>
+  <div class="why callout tip small"><b>B.</b> Identifiers come from small, guessable spaces. Use a keyed hash (HMAC) with the key in a secret manager, and treat the result as personal data.</div>
+</section>
+
+<section class="slide break" data-label="Break">
+  <div class="kicker">Break</div>
+  <h1>10-minute break</h1>
+  <div class="timer" data-minutes="10"></div>
+  <p class="lead">Next: Session 4 · Data for AI + capstone kickoff</p>
+</section>
+
+<!-- ======================= SESSION 4: DATA FOR AI ======================= -->
+<section class="slide section" data-session="Session 4 · Data for AI">
+  <div class="kicker">Session 4</div>
+  <h1>Data for AI</h1>
+  <ul class="bullets outcomes tight">
+    <li>Define metrics once in a semantic layer</li>
+    <li>Build embedding pipelines and vector search over your data</li>
+    <li>Let AI ask questions safely: plans, not raw SQL</li>
+  </ul>
+  <div class="sess-no">04</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">The shift</div>
+  <h2>AI is now a consumer of your data platform</h2>
+  <div class="cols cols-3 gap-s">
+    <div class="card c-teal"><h4>82%</h4><p class="small mb0">of data engineers use AI tools daily (2026 survey): for code, docs, tests and debugging.</p></div>
+    <div class="card c-cyan"><h4>Assistants</h4><p class="small mb0">"Ask your data" in Arabic or English: Cortex Analyst, Genie, BI copilots, internal agents over <b>MCP</b>.</p></div>
+    <div class="card c-coral"><h4>≈ 5%</h4><p class="small mb0">of teams run a semantic layer; 59% feel pressure to move fast and only 11% say modeling goes well.</p></div>
+  </div>
+  <div class="callout warn mt small"><b>The risk:</b> a model writing SQL on raw tables gives confident, inconsistent numbers ("revenue" with or without fees? refunds?). The fix is the same as for humans: governed definitions, good descriptions, access control.</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Semantic layer</div>
+  <h2>Metrics defined once, compiled to SQL everywhere</h2>
+  <div class="cols cols-2">
+    <pre class="code s" data-file="Lab 4.4"><code class="language-yaml">from: marts.fct_orders AS o
+joins: [marts.dim_stores AS s USING (store_id)]
+dimensions:
+  city:  {expr: s.city}
+  month: {expr: "date_trunc('month', o.order_date)::DATE"}
+metrics:
+  revenue_sar:
+    expr: "round(sum(o.items_amount)
+           FILTER (WHERE o.status = 'delivered'), 2)"
+    description: Revenue, sales from delivered orders,
+      SAR, excl. delivery fees. المبيعات والإيرادات</code></pre>
+    <div class="stack small">
+      <pre class="code s"><code class="language-python">run({"metrics": ["revenue_sar"],
+     "dimensions": ["city"],
+     "filters": [["month", "=", "2026-09-01"]]})
+# Riyadh 1,748,564.50 · Jeddah 1,062,633.91 …</code></pre>
+      <div class="callout tip">Same numbers as the dashboard mart, by construction. Tools: dbt Semantic Layer (MetricFlow), Cube, LookML, Snowflake semantic views.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Embeddings</div>
+  <h2>Search by meaning, across Arabic and English</h2>
+  <div class="cols cols-2">
+    <div class="stack small">
+      <pre class="code s"><code class="language-python">vectors = U.embed(texts)      # model2vec, CPU, 256 dims
+con.sql("CREATE TABLE product_vectors "
+        "(product_id BIGINT, vec FLOAT[256])")
+con.execute("""
+  SELECT name_en, array_cosine_similarity(
+           vec, ?::FLOAT[256]) AS score
+  FROM product_vectors JOIN raw.products USING (product_id)
+  ORDER BY score DESC LIMIT 3""", [qv])</code></pre>
+      <table class="t small">
+        <tr><th>Query</th><th>Top results</th></tr>
+        <tr><td dir="rtl">حليب للفطور</td><td>Al Waha Fresh Milk… (Dairy)</td></tr>
+        <tr><td>something to clean the dishes</td><td>Dish soap (Household)</td></tr>
+      </table>
+    </div>
+    <ul class="bullets small">
+      <li>An embedding pipeline is a <b>data pipeline</b>: source rows → text → vectors, kept in sync on change.</li>
+      <li>Store the <b>model name and version</b> next to the vectors; changing models means re-embedding everything.</li>
+      <li>Scale with an index: DuckDB <code>vss</code> (HNSW), pgvector, LanceDB, Qdrant, OpenSearch.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Safe text-to-SQL</div>
+  <h2>The model chooses; the platform executes</h2>
+  <div class="flow">
+    <div class="step c-navy"><b>Question</b>"متوسط قيمة السلة في جدة يوم اليوم الوطني؟"</div>
+    <div class="arrow">→</div>
+    <div class="step c-teal"><b>Retrieve</b>relevant metrics by embedding</div>
+    <div class="arrow">→</div>
+    <div class="step c-cyan"><b>Plan</b>LLM (or rules) → JSON semantic query</div>
+    <div class="arrow">→</div>
+    <div class="step c-coral"><b>Validate</b>known names, allowed ops, limits</div>
+    <div class="arrow">→</div>
+    <div class="step c-purple"><b>Compile + run</b>parameterized SQL</div>
+  </div>
+  <div class="cols cols-2 mt">
+    <pre class="code s"><code class="language-json">{"metrics": ["avg_basket_sar"],
+ "filters": [["city", "in", ["Jeddah"]],
+             ["order_date", "=", "2026-09-23"]]}
+→ avg_basket_sar = 148.59</code></pre>
+    <div class="callout tip small">The guardrail rejects unknown metrics, PII dimensions (<code>national_id</code>), odd operators (<code>; DROP</code>). Values travel as parameters. <b>Evaluate</b> the planner on a fixed question set (Lab 4.4 ✱: 80%) and read the failures.</div>
+  </div>
+</section>
+
+<section class="slide lab top">
+  <div class="cols cols-2">
+    <div>
+      <div class="lab-tag">Lab 4.4 · 25 min</div>
+      <h2>Data for AI</h2>
+      <a class="nb" href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D4_4_data_for_ai.ipynb" target="_blank" rel="noopener">labs/D4_4_data_for_ai.ipynb ↗</a>
+      <p class="small mt">A YAML semantic layer, bilingual product search in DuckDB, and question answering that never lets a model write SQL. An LLM endpoint is optional.</p>
+    </div>
+    <ul class="checklist">
+      <li>Define metrics once; compile them to SQL <span class="min">7'</span></li>
+      <li>Bilingual product search with embeddings <span class="min">6'</span></li>
+      <li>Retrieve the right metric for a question <span class="min">4'</span></li>
+      <li>Question → validated semantic query → answer <span class="min">6'</span></li>
+      <li class="stretch">✱ Evaluate the question planner</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ======================= WRAP-UP ======================= -->
+<section class="slide" data-label="Day 4 wrap-up">
+  <div class="kicker">Day 4 deliverable</div>
+  <h2>What you built today</h2>
+  <div class="flow">
+    <div class="step c-navy"><b>Operate</b>assets, partitions, backfills, checks</div>
+    <div class="arrow">→</div>
+    <div class="step c-teal"><b>Observe</b>contract, diff, smart monitors</div>
+    <div class="arrow">→</div>
+    <div class="step c-cyan"><b>Govern</b>discover, classify, pseudonymize, erase</div>
+    <div class="arrow">→</div>
+    <div class="step c-coral"><b>Serve</b>semantic layer, vectors, guarded AI</div>
+  </div>
+  <div class="cols cols-3 mt">
+    <div class="card c-teal"><h4>Remember</h4><p class="small mb0">Every run must be safe to repeat. Backfills and retries are normal.</p></div>
+    <div class="card c-cyan"><h4>Remember</h4><p class="small mb0">A contract needs an owner; a monitor needs a baseline that knows the calendar.</p></div>
+    <div class="card c-coral"><h4>Remember</h4><p class="small mb0">Erasure isn't done until the bytes are gone, everywhere.</p></div>
+  </div>
+</section>
+
+<!-- ======================= CAPSTONE KICKOFF ======================= -->
+<section class="slide dark" data-label="Capstone kickoff">
+  <div class="kicker">Capstone kickoff</div>
+  <h1>Build it. Run it. Defend it.</h1>
+  <p class="lead mt">Teams of 2–3 deliver a working data platform and present it on Day 5.</p>
+  <div class="cols cols-3 mt">
+    <div class="card c-teal"><h4>1 · Qafila Lakehouse</h4><p class="small mb0">Batch + streaming, raw to governed marts, a near-real-time ops view.</p></div>
+    <div class="card c-cyan"><h4>2 · Open Data Platform</h4><p class="small mb0">Saudi open datasets into a lakehouse with tests, a semantic layer and a dashboard.</p></div>
+    <div class="card c-coral"><h4>3 · Real-time Ops Monitor</h4><p class="small mb0">Event-time KPIs, SLA alerts, Iceberg history and replay.</p></div>
+  </div>
+</section>
+
+<section class="slide" data-label="Capstone requirements">
+  <div class="kicker">Minimum requirements</div>
+  <h2>What every project must show</h2>
+  <div class="cols cols-2">
+    <ol class="bullets small">
+      <li>An end-to-end pipeline from <b>two or more source types</b> to analytics-ready tables, <b>one command</b> to run.</li>
+      <li>A <b>layered model</b> (raw → staging → marts) with the <b>grain</b> of every fact table written down.</li>
+      <li><b>Incremental</b> loading that's safe to re-run, demonstrated live.</li>
+      <li>At least <b>8 tests or contract checks</b>, one catching a <b>real</b> problem.</li>
+      <li><b>Orchestration</b> (or a justified alternative) and a <b>governance note</b>: classification and protection of every personal-data column.</li>
+    </ol>
+    <div class="stack small">
+      <div class="card c-navy flat"><b>Submission</b>: repository with code, README from <code>TEMPLATE_README.md</code>, and how to run it.</div>
+      <div class="card c-coral flat"><b>Presentation</b>: 10 min talk + live demo, 5 min technical Q&amp;A.</div>
+      <div class="card c-teal flat"><b>Deadline</b>: repository link before Day 5, Session 1.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-label="Capstone rubric">
+  <div class="kicker">Evaluation rubric</div>
+  <h2>How capstones are scored</h2>
+  <div class="cols cols-2 mid">
+    <div class="bars">
+      <div class="row"><span>Functional end-to-end pipeline</span><div class="bar" style="--w:100%"></div><span class="val">30%</span></div>
+      <div class="row"><span>Architecture &amp; modeling</span><div class="bar" style="--w:83%;--c:var(--cyan)"></div><span class="val">25%</span></div>
+      <div class="row"><span>Quality, testing &amp; observability</span><div class="bar" style="--w:67%;--c:var(--coral)"></div><span class="val">20%</span></div>
+      <div class="row"><span>Orchestration, governance &amp; ops</span><div class="bar" style="--w:50%;--c:var(--purple)"></div><span class="val">15%</span></div>
+      <div class="row"><span>Presentation &amp; reproducibility</span><div class="bar" style="--w:33%;--c:var(--amber)"></div><span class="val">10%</span></div>
+    </div>
+    <div class="callout tip small"><b>What earns top marks:</b> it runs from a clean clone, every design choice has a reason, the grain is explicit, a re-run changes nothing, a test caught something real, and you know where personal data lives and who can see it.</div>
+  </div>
+</section>
+
+<section class="slide" data-label="Capstone kit">
+  <div class="kicker">Starter kit</div>
+  <h2><code>labs/capstone/</code>: a working baseline to build on</h2>
+  <div class="cols cols-2">
+    <pre class="code s" data-file="terminal"><code class="language-bash">cd labs
+uv run python capstone/pipeline.py
+# run succeeded: 30 assets materialized, 45 checks
+#   ⚠️ raw/payments · payments_contract:
+#      payments_positive_amount: 16 (mustBe 0)
+#   ⚠️ marts/fct_orders · assert_order_totals_match_payments
+uv run dagster dev -f capstone/pipeline.py   # the UI</code></pre>
+    <div class="stack dense">
+      <div class="card c-teal flat"><b>Included</b>: 9 ingestion assets → dbt project → Iceberg gold table, contract check, volume monitor, nightly schedule.</div>
+      <div class="card c-coral flat"><b>Weaknesses to fix</b>: full refreshes everywhere, no streaming path, contract breaches only warn, raw PII unprotected, no partitions.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-label="Capstone plan">
+  <div class="kicker">Plan your evening</div>
+  <h2>A realistic capstone timeline</h2>
+  <div class="cols cols-4 gap-s">
+    <div class="card c-teal"><h4>Now (10')</h4><p class="small mb0">Confirm option, sources and scope with the instructor.</p></div>
+    <div class="card c-cyan"><h4>Block 1 (1–2h)</h4><p class="small mb0">Sources into raw; one command end to end, starting from <code>pipeline.py</code>.</p></div>
+    <div class="card c-coral"><h4>Block 2 (1–2h)</h4><p class="small mb0">Models with grain, incremental loads, tests and contract checks.</p></div>
+    <div class="card c-amber"><h4>Block 3 (1h)</h4><p class="small mb0">Orchestration, governance note, README, 6–8 slides, one timed rehearsal.</p></div>
+  </div>
+  <div class="callout warn mt small"><b>Scope down early.</b> A small platform that runs from a clean clone beats an ambitious one that fails in the demo. Record a backup video of the demo.</div>
+</section>
+
+<section class="slide dark" data-label="Next">
+  <div class="kicker">Tomorrow · Day 5</div>
+  <h1>Capstone presentations</h1>
+  <p class="lead mt">Demonstrate, explain and defend a working data platform.</p>
+  <div class="cols cols-3 mt">
+    <div class="card c-teal"><h4>Bring</h4><p class="small mb0">Repository link, a running pipeline (and a recorded backup), your slides.</p></div>
+    <div class="card c-cyan"><h4>Expect</h4><p class="small mb0">Questions on grain, idempotency, failure handling and personal data.</p></div>
+    <div class="card c-coral"><h4>Give</h4><p class="small mb0">Structured peer feedback to the other teams.</p></div>
+  </div>
+</section>
+
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="../assets/logo.js"></script>
+<script src="../assets/deck.js"></script>
+</body>
+</html>
