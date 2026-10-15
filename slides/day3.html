@@ -1,0 +1,816 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Day 3 · Modern Data Engineering</title>
+<link rel="icon" href="../assets/img/academy.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+Arabic:wght@400;600;700&family=IBM+Plex+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+<link rel="stylesheet" href="../assets/deck.css">
+</head>
+<body>
+<div class="deck" data-day="Day 3" data-course="Modern Data Engineering">
+
+<!-- ======================= OPENING ======================= -->
+<section class="slide title" data-label="Welcome">
+  <div class="kicker">SDAIA Academy · Modern Data Engineering</div>
+  <h1>Lakehouse, Scale &amp; Streaming</h1>
+  <p class="lead mt">Day 3: open tables, distributed processing, and data that never stops arriving</p>
+  <div class="meta">
+    <span class="track">Data Engineering Track</span>
+    <span>Day 3 of 5</span>
+    <span>Iceberg · Spark · Kafka concepts · Streaming</span>
+  </div>
+</section>
+
+<section class="slide" data-label="Recap">
+  <div class="kicker">Where we are</div>
+  <h2>Days 1–2 assumed one machine and nightly batches. Today we drop both.</h2>
+  <div class="cols cols-3">
+    <div class="card c-teal"><h4>Many engines, one copy</h4><p class="small mb0">Our Parquet files are "just files". Today they become <b>tables</b> that Spark, DuckDB, Polars and Snowflake can all read and write safely.</p></div>
+    <div class="card c-cyan"><h4>More data than one box</h4><p class="small mb0">When a job outgrows a single machine, <b>Spark</b> splits it across a cluster. You'll learn to read its plans and fix its classic problems.</p></div>
+    <div class="card c-coral"><h4>Continuous data</h4><p class="small mb0">Courier events arrive every second, late and duplicated. <b>Streaming</b> turns them into a live delivery-SLA dashboard.</p></div>
+  </div>
+  <div class="callout tip mt small"><b>Today's question from Qafila ops:</b> "Which dark store is missing the 30-minute delivery promise, right now?"</div>
+</section>
+
+<section class="slide" data-label="Agenda">
+  <div class="kicker">Today</div>
+  <h2>Day 3 agenda</h2>
+  <div class="agenda">
+    <div class="item"><span><b>Session 1 · Open table formats &amp; the lakehouse</b><small>Iceberg's metadata tree, snapshots, time travel, evolution; Delta, Hudi, DuckLake; catalogs</small></span><span class="d">50 min</span></div>
+    <div class="item brk"><span>Break</span><span class="d">10 min</span></div>
+    <div class="item"><span><b>Session 2 · Distributed processing with Spark</b><small>Driver and executors, lazy plans, shuffles, joins, skew, writing output</small></span><span class="d">50 min</span></div>
+    <div class="item brk"><span>Long break</span><span class="d">20 min</span></div>
+    <div class="item"><span><b>Session 3 · Streaming fundamentals</b><small>Logs, offsets, delivery guarantees, event time, windows, watermarks</small></span><span class="d">50 min</span></div>
+    <div class="item brk"><span>Break</span><span class="d">10 min</span></div>
+    <div class="item"><span><b>Session 4 · Streams into the lakehouse</b><small>Exactly-once sinks, compaction, Kappa vs. Lambda, real-time SLA</small></span><span class="d">50 min</span></div>
+  </div>
+</section>
+
+<!-- ======================= SESSION 1: TABLE FORMATS ======================= -->
+<section class="slide section" data-session="Session 1 · Open table formats">
+  <div class="kicker">Session 1</div>
+  <h1>Open table formats &amp; the lakehouse</h1>
+  <ul class="bullets outcomes tight">
+    <li>Explain why a folder of Parquet files is not a table</li>
+    <li>Walk Iceberg's metadata tree from catalog to data file</li>
+    <li>Use snapshots, time travel, and schema and partition evolution</li>
+  </ul>
+  <div class="sess-no">01</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">The problem</div>
+  <h2>A folder of Parquet files is not a table</h2>
+  <div class="cols cols-2">
+    <div class="stack dense">
+      <div class="card c-coral flat"><b>No atomic writes.</b> A job dies after writing 40 of 100 files: readers see half a load.</div>
+      <div class="card c-coral flat"><b>No updates or deletes.</b> One refunded order or one erasure request means rewriting whole files by hand.</div>
+      <div class="card c-coral flat"><b>No safe concurrency.</b> Two writers, one folder: last one wins, silently.</div>
+      <div class="card c-coral flat"><b>Slow planning.</b> Listing 100,000 objects on S3 takes longer than reading the data you need.</div>
+      <div class="card c-coral flat"><b>Schema by convention.</b> A renamed column? Hope every reader got the memo.</div>
+    </div>
+    <div class="stack">
+      <div class="callout note small"><b>Hive-style tables</b> (2010s) added a metastore pointing at folders, plus <code>dt=2026-09-23/</code> partitions. Better, but the folder was still the truth.</div>
+      <div class="callout tip small"><b>Table formats</b> (Iceberg, Delta Lake, Hudi) move the truth into <b>metadata files</b>: an explicit list of which data files make up the table, at each version. Everything else follows from that.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Architectures</div>
+  <h2>Warehouse, lake, lakehouse</h2>
+  <table class="t small">
+    <tr><th></th><th>Warehouse</th><th>Data lake</th><th>Lakehouse</th></tr>
+    <tr><td><b>Storage</b></td><td>proprietary, inside the engine</td><td>open files on object storage</td><td>open files + open <b>table format</b> on object storage</td></tr>
+    <tr><td><b>Engines</b></td><td>one</td><td>any, but no guarantees</td><td>many, with ACID guarantees</td></tr>
+    <tr><td><b>Updates, time travel</b></td><td>yes</td><td>no</td><td>yes</td></tr>
+    <tr><td><b>Examples</b></td><td>Snowflake, BigQuery, Redshift</td><td>S3 + Hive</td><td>Iceberg / Delta on S3, ADLS, GCS, MinIO</td></tr>
+  </table>
+  <div class="cols cols-3 gap-s mt">
+    <div class="card c-navy"><h4>≈ 44%</h4><p class="small mb0">of teams run a <b>warehouse</b> as their main platform</p></div>
+    <div class="card c-teal"><h4>≈ 27%</h4><p class="small mb0">run a <b>lakehouse</b></p></div>
+    <div class="card c-cyan"><h4>≈ 12%</h4><p class="small mb0"><b>hybrid</b>: warehouses now read and write Iceberg too</p></div>
+  </div>
+  <p class="xsmall muted mt-s mb0">Joe Reis, State of Data Engineering survey 2026. The line is blurring: Snowflake, BigQuery and Redshift all manage Iceberg tables.</p>
+</section>
+
+<section class="slide">
+  <div class="kicker">Apache Iceberg</div>
+  <h2>The metadata tree</h2>
+  <div class="cols cols-2 mid">
+    <div class="figure">
+      <svg viewBox="0 0 520 418" font-family="IBM Plex Sans, sans-serif" font-size="15">
+        <rect x="150" y="10" width="220" height="44" rx="10" fill="#1c355e"/>
+        <text x="260" y="38" text-anchor="middle" fill="#fff" font-weight="600">Catalog: qafila.orders →</text>
+        <line x1="260" y1="54" x2="260" y2="78" stroke="#1c355e" stroke-width="2"/>
+        <rect x="120" y="78" width="280" height="56" rx="10" fill="#fff" stroke="#1c355e" stroke-width="2"/>
+        <text x="260" y="101" text-anchor="middle" font-weight="600" fill="#1c355e">00003-….metadata.json</text>
+        <text x="260" y="122" text-anchor="middle" font-size="12" fill="#5b6472">schemas · partition specs · snapshots · current</text>
+        <line x1="260" y1="134" x2="260" y2="158" stroke="#1c355e" stroke-width="2"/>
+        <rect x="120" y="158" width="280" height="56" rx="10" fill="#c9efe6"/>
+        <text x="260" y="181" text-anchor="middle" font-weight="600">snap-….avro (manifest list)</text>
+        <text x="260" y="202" text-anchor="middle" font-size="12" fill="#5b6472">one per snapshot · partition ranges per manifest</text>
+        <line x1="200" y1="214" x2="130" y2="240" stroke="#00ae8d" stroke-width="2"/>
+        <line x1="320" y1="214" x2="390" y2="240" stroke="#00ae8d" stroke-width="2"/>
+        <rect x="30" y="240" width="200" height="56" rx="10" fill="#ffe3b3"/>
+        <text x="130" y="263" text-anchor="middle" font-weight="600">manifest (….avro)</text>
+        <text x="130" y="284" text-anchor="middle" font-size="12" fill="#5b6472">data files + column min/max</text>
+        <rect x="290" y="240" width="200" height="56" rx="10" fill="#ffe3b3"/>
+        <text x="390" y="263" text-anchor="middle" font-weight="600">manifest (….avro)</text>
+        <text x="390" y="284" text-anchor="middle" font-size="12" fill="#5b6472">data files + column min/max</text>
+        <g fill="#ffd3cb">
+          <rect x="20" y="330" width="66" height="54" rx="6"/><rect x="96" y="330" width="66" height="54" rx="6"/><rect x="172" y="330" width="66" height="54" rx="6"/>
+          <rect x="282" y="330" width="66" height="54" rx="6"/><rect x="358" y="330" width="66" height="54" rx="6"/><rect x="434" y="330" width="66" height="54" rx="6"/>
+        </g>
+        <g stroke="#ff6b4a" stroke-width="1.5">
+          <line x1="90" y1="296" x2="53" y2="330"/><line x1="130" y1="296" x2="129" y2="330"/><line x1="170" y1="296" x2="205" y2="330"/>
+          <line x1="350" y1="296" x2="315" y2="330"/><line x1="390" y1="296" x2="391" y2="330"/><line x1="430" y1="296" x2="467" y2="330"/>
+        </g>
+        <text x="260" y="408" text-anchor="middle" font-size="13" fill="#5b6472">data files (Parquet), never modified after they are written</text>
+      </svg>
+    </div>
+    <ul class="bullets small">
+      <li><b>Catalog</b>: maps a table name to its <b>current</b> metadata file. A commit is one atomic pointer swap.</li>
+      <li><b>metadata.json</b>: schemas, partition specs, the list of snapshots. A new file per commit.</li>
+      <li><b>Manifest list</b>: the manifests of one snapshot, with partition ranges to skip whole manifests.</li>
+      <li><b>Manifests</b>: data files with per-column stats, to skip files.</li>
+      <li>Readers <b>follow pointers</b>; they never list directories.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Snapshots</div>
+  <h2>Every write is a new snapshot; old ones stay readable</h2>
+  <div class="cols cols-2">
+    <pre class="code s" data-file="PyIceberg"><code class="language-python">orders.append(batch1)          # snapshot 1
+orders.append(batch2)          # snapshot 2
+orders.upsert(refunds, join_cols=["order_id"])
+orders.delete("customer_id = 105495")
+
+for s in orders.snapshots():   # time travel
+    t = orders.scan(snapshot_id=s.snapshot_id)
+    print(s.summary.operation, t.to_arrow().num_rows)
+# append 1868 · append 4701 · overwrite 4696
+# append 4701 · overwrite 4700</code></pre>
+    <div class="stack small">
+      <div class="callout tip"><b>Optimistic concurrency.</b> Writers prepare new files, then try to swap the catalog pointer. If someone else committed first, they re-check for conflicts and retry. No locks while writing.</div>
+      <div class="callout note"><b>Time travel</b> answers "what did the table say when the dashboard broke?" and pins reproducible ML training sets.</div>
+      <div class="callout warn"><b>But:</b> deleted rows live on in old snapshots. The PDPL right to erasure needs <b>snapshot expiry</b> too (Lab 3.1 stretch, Lab 4.3).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Row-level changes</div>
+  <h2>Copy-on-write vs. merge-on-read</h2>
+  <div class="cols cols-2">
+    <div class="card c-teal"><h4>Copy-on-write</h4>
+      <p class="small">Rewrite every data file that contains a changed row.</p>
+      <ul class="bullets xsmall mb0"><li>✓ reads are as fast as ever</li><li>✗ one updated row rewrites a 512 MB file</li><li>Good for: rare, large batch changes</li></ul></div>
+    <div class="card c-coral"><h4>Merge-on-read</h4>
+      <p class="small">Write small <b>delete files</b> (or deletion vectors) next to the data; readers merge them in.</p>
+      <ul class="bullets xsmall mb0"><li>✓ cheap, fast writes (CDC, streaming upserts)</li><li>✗ reads slow down until compaction</li><li>Good for: frequent small changes</li></ul></div>
+  </div>
+  <div class="callout note mt small"><b>Iceberg v3</b> (2025) replaced position-delete files with compact <b>deletion vectors</b> (shared with Delta), and added a <b>VARIANT</b> type for semi-structured JSON and <b>row lineage</b> for incremental processing.</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Evolution</div>
+  <h2>Change the schema and the partitioning without rewriting data</h2>
+  <div class="cols cols-2">
+    <pre class="code s" data-file="Lab 3.1"><code class="language-python"># hidden partitioning: derived from a column
+with orders.update_spec() as spec:
+    spec.add_field("created_at", DayTransform(),
+                   "created_day")
+
+# months later: new column, new layout
+with orders.update_schema() as upd:
+    upd.add_column("channel", StringType())
+with orders.update_spec() as spec:
+    spec.remove_field("created_day")
+    spec.add_field("created_at", MonthTransform(),
+                   "created_month")</code></pre>
+    <ul class="bullets small">
+      <li>Columns are tracked by <b>ID</b>, not name: rename, reorder, add and drop safely.</li>
+      <li><b>Hidden partitioning</b>: queries filter on <code>created_at</code>; they never mention <code>created_day</code>, so no one scans the whole table by forgetting the partition column.</li>
+      <li>Old files keep the old spec, new files use the new one; the planner handles both. In Lab 3.1: 8 daily files and 1 monthly file, one table.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">The landscape</div>
+  <h2>Four open table formats</h2>
+  <table class="t small">
+    <tr><th>Format</th><th>Origin</th><th>Metadata lives in</th><th>Notes</th></tr>
+    <tr class="hl"><td><b>Apache Iceberg</b></td><td>Netflix → Apache</td><td>files (JSON + Avro) + a catalog</td><td>the broadest engine support; the de-facto interchange format</td></tr>
+    <tr><td><b>Delta Lake</b></td><td>Databricks → Linux Foundation</td><td>files (<code>_delta_log</code> JSON + checkpoints)</td><td>Databricks' default; UniForm exposes Delta tables as Iceberg</td></tr>
+    <tr><td><b>Apache Hudi</b></td><td>Uber → Apache</td><td>files (timeline)</td><td>strong at record-level upserts and incremental pulls</td></tr>
+    <tr><td><b>DuckLake</b></td><td>DuckDB Labs (1.0: April 2026)</td><td>a SQL database (Postgres, SQLite, DuckDB)</td><td>Parquet data + catalog <i>and</i> metadata in SQL: simple, fast commits</td></tr>
+  </table>
+  <div class="callout tip mt small"><b>Which one?</b> Follow your engines and your catalog. Iceberg is the safest default for "many engines, one copy"; inside Databricks, Delta; on a laptop or small team, DuckLake is worth a look.</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Catalogs</div>
+  <h2>The catalog is the new control plane</h2>
+  <div class="cols cols-2">
+    <ul class="bullets small">
+      <li>Every engine must agree on one thing: <b>which metadata file is current</b>. That's the catalog's job.</li>
+      <li>The <b>Iceberg REST catalog</b> spec lets any engine talk to any catalog over HTTP.</li>
+      <li>Catalogs now also hand out <b>short-lived storage credentials</b> and enforce <b>access control</b>: governance moves here (Day 4).</li>
+    </ul>
+    <div class="stack dense">
+      <div class="card c-navy flat"><b>Open source</b>: Apache Polaris, Unity Catalog OSS, Lakekeeper, Nessie, Apache Gravitino</div>
+      <div class="card c-teal flat"><b>Cloud</b>: AWS Glue / S3 Tables, Databricks Unity Catalog, Snowflake Open Catalog, BigLake</div>
+      <div class="card c-cyan flat"><b>In the lab</b>: PyIceberg's <code>SqlCatalog</code> on SQLite, with a local folder playing S3</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide lab top">
+  <div class="cols cols-2">
+    <div>
+      <div class="lab-tag">Lab 3.1 · 25 min</div>
+      <h2>An Iceberg lakehouse with PyIceberg</h2>
+      <a class="nb" href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D3_1_iceberg_lakehouse.ipynb" target="_blank" rel="noopener">labs/D3_1_iceberg_lakehouse.ipynb ↗</a>
+      <p class="small mt">Build Qafila's orders table in a local catalog, change it, travel back in time, and read it from three engines.</p>
+    </div>
+    <ul class="checklist">
+      <li>Catalog, namespace, day-partitioned table <span class="min">5'</span></li>
+      <li>Load two batches; walk the metadata tree on disk <span class="min">5'</span></li>
+      <li>Upsert refunds, delete an erased customer, time travel <span class="min">6'</span></li>
+      <li>Evolve schema and partitioning without rewriting <span class="min">5'</span></li>
+      <li>Same table from DuckDB and Polars <span class="min">4'</span></li>
+      <li class="stretch">✱ Expire snapshots: what really leaves the disk?</li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide quiz">
+  <div class="kicker">Checkpoint</div>
+  <h2>Spark and DuckDB both write to the same Iceberg table at the same moment. What happens?</h2>
+  <div class="opts">
+    <div class="opt" data-k="A">The table is corrupted: one writer's files overwrite the other's</div>
+    <div class="opt" data-k="B" data-ok>Both write their own files; the first to swap the catalog pointer wins, the second checks for conflicts and retries its commit</div>
+    <div class="opt" data-k="C">The second writer blocks until the first finishes writing its data files</div>
+  </div>
+  <div class="why callout tip small"><b>B.</b> Data files are never shared or modified, so writes don't collide. Only the commit (one pointer swap in the catalog) is serialized: optimistic concurrency.</div>
+</section>
+
+<section class="slide break" data-label="Break">
+  <div class="kicker">Break</div>
+  <h1>10-minute break</h1>
+  <div class="timer" data-minutes="10"></div>
+  <p class="lead">Next: Session 2 · Distributed processing with Spark</p>
+</section>
+
+<!-- ======================= SESSION 2: SPARK ======================= -->
+<section class="slide section" data-session="Session 2 · Spark">
+  <div class="kicker">Session 2</div>
+  <h1>Distributed processing with Spark</h1>
+  <ul class="bullets outcomes tight">
+    <li>Decide when a job needs a cluster at all</li>
+    <li>Read a Spark plan: stages, shuffles, join strategies</li>
+    <li>Diagnose skew and the small-files problem, and fix them</li>
+  </ul>
+  <div class="sess-no">02</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Do you need a cluster?</div>
+  <h2>Scale up first; scale out when you must</h2>
+  <div class="cols cols-2">
+    <div class="stack dense">
+      <div class="card c-teal flat"><b>One machine is enough</b> for most tables: DuckDB and Polars handle hundreds of GB on a large VM, with no cluster to run.</div>
+      <div class="card c-coral flat"><b>Reach for Spark when</b> a single job reads <b>terabytes</b>, the work must finish within a window one machine can't meet, or many teams share one platform.</div>
+      <div class="card c-cyan flat"><b>You'll meet Spark anyway</b>: Databricks, EMR, Dataproc, Microsoft Fabric and Glue all run it, and many existing pipelines are written in it.</div>
+    </div>
+    <div class="callout note small"><b>Spark 4</b> (2025–26): ANSI SQL by default, a <b>VARIANT</b> type for JSON, <b>Spark Connect</b> (a thin client talking to a remote cluster), a Python data-source API, and Arrow everywhere between the JVM and Python.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Architecture</div>
+  <h2>One driver, many executors</h2>
+  <div class="flow">
+    <div class="step c-navy"><b>Driver</b>your program · builds and optimizes the plan · schedules tasks</div>
+    <div class="arrow">→</div>
+    <div class="step c-teal"><b>Cluster manager</b>YARN · Kubernetes · standalone · a managed service</div>
+    <div class="arrow">→</div>
+    <div class="step c-cyan"><b>Executors</b>JVM processes on worker nodes · run tasks · cache data</div>
+  </div>
+  <div class="cols cols-3 gap-s mt">
+    <div class="card c-navy"><h4>Job</h4><p class="small mb0">One per <b>action</b> (<code>count</code>, <code>write</code>, <code>collect</code>).</p></div>
+    <div class="card c-teal"><h4>Stage</h4><p class="small mb0">A run of work with no shuffle. Each <b>shuffle</b> starts a new stage.</p></div>
+    <div class="card c-cyan"><h4>Task</h4><p class="small mb0">One stage on one <b>partition</b>. Tasks run in parallel on executor cores.</p></div>
+  </div>
+  <div class="callout tip mt small">In Lab 3.2 everything runs in one process (<code>local[2]</code>): driver and executors share your Colab VM. The code is identical on a 1,000-node cluster; only <code>.master()</code> changes.</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Lazy evaluation</div>
+  <h2>Transformations build a plan; actions run it</h2>
+  <div class="cols cols-2">
+    <pre class="code s" data-file="Lab 3.2"><code class="language-python">orders = spark.read.parquet("lake/orders")  # partitioned by order_date
+national_day = orders.filter(
+    (F.col("order_date") == "2026-09-23")
+    &amp; (F.col("status") == "delivered"))      # nothing runs yet
+national_day.count()                         # action → 1 job
+national_day.explain()
+# FileScan parquet ...
+#   PartitionFilters: [order_date = 2026-09-23]
+#   PushedFilters: [EqualTo(status,delivered)]</code></pre>
+    <ul class="bullets small">
+      <li>Waiting lets <b>Catalyst</b> (the optimizer) see the whole pipeline: prune partitions, push filters, pick join strategies.</li>
+      <li><b>Narrow</b> transformations (<code>filter</code>, <code>select</code>, <code>withColumn</code>) stay in one partition.</li>
+      <li><b>Wide</b> ones (<code>groupBy</code>, <code>join</code>, <code>orderBy</code>, <code>distinct</code>) need rows from many partitions: a <b>shuffle</b>.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Shuffles</div>
+  <h2>Every <code>Exchange</code> in the plan is a shuffle</h2>
+  <div class="cols cols-2">
+    <pre class="code s"><code class="language-text">HashAggregate(keys=[city, order_date], sum(...))
++- Exchange hashpartitioning(city, order_date, 8)
+   +- HashAggregate(keys=[city, order_date], partial_sum)
+      +- BroadcastHashJoin [store_id]
+         :- BroadcastHashJoin [order_id]
+         :  :- FileScan parquet order_items
+         :  +- BroadcastExchange
+         :     +- FileScan parquet orders
+         +- BroadcastExchange
+            +- FileScan parquet stores</code></pre>
+    <ul class="bullets small">
+      <li>A shuffle writes every row to local disk, sends it over the network to the executor that owns its key, and reads it back. It's where jobs spend time, memory, and fail.</li>
+      <li><b>Partial aggregation</b> before the shuffle (above) shrinks what moves.</li>
+      <li><code>spark.sql.shuffle.partitions</code> (default 200) sets the parallelism after a shuffle; <b>AQE</b> coalesces it at run time.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Joins</div>
+  <h2>How Spark joins two tables</h2>
+  <table class="t small">
+    <tr><th>Strategy</th><th>How</th><th>When</th></tr>
+    <tr class="hl"><td><b>Broadcast hash join</b></td><td>copy the small side to every executor; no shuffle of the big side</td><td>one side &lt; <code>autoBroadcastJoinThreshold</code> (10 MB default; often raised to ~100 MB)</td></tr>
+    <tr><td><b>Sort-merge join</b></td><td>shuffle both sides by key, sort, merge</td><td>two large tables: the default</td></tr>
+    <tr><td><b>Shuffle hash join</b></td><td>shuffle both, hash the smaller side per partition</td><td>one side is medium-sized; AQE may choose it at run time</td></tr>
+  </table>
+  <div class="cols cols-2 mt">
+    <pre class="code s"><code class="language-python">facts.join(F.broadcast(dim_store), "store_id")</code></pre>
+    <div class="callout tip small"><b>Rule of thumb:</b> broadcast dimensions, shuffle facts. Hint with <code>F.broadcast()</code> when Spark's size estimate is wrong; never broadcast something that doesn't fit in executor memory.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Skew</div>
+  <h2>A job is as slow as its slowest task</h2>
+  <div class="cols cols-2 mid">
+    <div class="bars">
+      <div class="row"><span>task 1</span><div class="bar" style="--w:20%"></div><span class="val">30 s</span></div>
+      <div class="row"><span>task 2</span><div class="bar" style="--w:22%"></div><span class="val">33 s</span></div>
+      <div class="row"><span>task 3</span><div class="bar" style="--w:19%"></div><span class="val">29 s</span></div>
+      <div class="row"><span>task 4: Sep 23</span><div class="bar" style="--w:100%;--c:var(--coral)"></div><span class="val">40 min</span></div>
+      <p class="xsmall muted mt-s mb0">Illustrative: partitioning by date puts all of National Day in one task.</p>
+    </div>
+    <div class="stack dense">
+      <div class="card c-teal flat"><b>AQE skew join</b> (on by default): splits oversized partitions in sort-merge joins at run time.</div>
+      <div class="card c-cyan flat"><b>Salting</b>: add a random-ish key (<code>order_id % 4</code>), aggregate per (key, salt), then per key.</div>
+      <div class="card c-coral flat"><b>Fix the key</b>: a better partition key, or handle the hot key separately (often <code>NULL</code> or "unknown").</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Writing output</div>
+  <h2>Each task writes a file into each folder it touches</h2>
+  <div class="cols cols-2">
+    <pre class="code s" data-file="Lab 3.2"><code class="language-python"># 8 tasks × 3 cities → 24 files
+items_wide.write.partitionBy("city") \
+    .parquet("out_naive")
+
+# one task per city → 3 files
+items_wide.repartition("city") \
+    .write.partitionBy("city") \
+    .parquet("out_tidy")</code></pre>
+    <ul class="bullets small">
+      <li>At scale: 1,000 tasks × 365 days = 365,000 files. That's the <b>small-files problem</b> from Day 1.</li>
+      <li>Fixes: <code>repartition</code> by the partition column, AQE's rebalance, or let the <b>table format compact</b> later (Session 4).</li>
+      <li>In production, write <b>Iceberg or Delta tables</b>, not bare Parquet: <code>df.writeTo("cat.db.orders").append()</code>.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide lab top">
+  <div class="cols cols-2">
+    <div>
+      <div class="lab-tag">Lab 3.2 · 25 min</div>
+      <h2>Distributed processing with Spark</h2>
+      <a class="nb" href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D3_2_spark.ipynb" target="_blank" rel="noopener">labs/D3_2_spark.ipynb ↗</a>
+      <p class="small mt">Run Spark 4 on Colab: one metric three ways, then read plans, measure skew and count files. Runs best on Colab (Java 17 is installed for you).</p>
+    </div>
+    <ul class="checklist">
+      <li>Start Spark; partition pruning and lazy evaluation <span class="min">5'</span></li>
+      <li>Daily net sales: DataFrame API vs. SQL vs. DuckDB <span class="min">6'</span></li>
+      <li>Read the plan: shuffles, broadcast vs. sort-merge <span class="min">5'</span></li>
+      <li>Measure skew; salt the hot day <span class="min">5'</span></li>
+      <li>Write partitioned output; count the files <span class="min">4'</span></li>
+      <li class="stretch">✱ pandas UDF vs. built-in function</li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide quiz">
+  <div class="kicker">Checkpoint</div>
+  <h2>A Spark job's 200 tasks finish in 30 s, but one runs for 40 minutes. What's the most likely cause?</h2>
+  <div class="opts">
+    <div class="opt" data-k="A">The cluster needs more executors</div>
+    <div class="opt" data-k="B" data-ok>Data skew: one key holds far more rows than the others, so one partition is huge</div>
+    <div class="opt" data-k="C">The driver is out of memory</div>
+  </div>
+  <div class="why callout tip small"><b>B.</b> More executors don't help: the big partition is still processed by one task. Check task sizes in the Spark UI, then let AQE split it, salt the key, or handle the hot key separately.</div>
+</section>
+
+<section class="slide break" data-label="Long break">
+  <div class="kicker">Long break</div>
+  <h1>20-minute break</h1>
+  <div class="timer" data-minutes="20"></div>
+  <p class="lead">Next: Session 3 · Streaming fundamentals</p>
+</section>
+
+<!-- ======================= SESSION 3: STREAMING ======================= -->
+<section class="slide section" data-session="Session 3 · Streaming">
+  <div class="kicker">Session 3</div>
+  <h1>Streaming fundamentals</h1>
+  <ul class="bullets outcomes tight">
+    <li>Explain logs, partitions, offsets and consumer groups</li>
+    <li>Reason about delivery guarantees and idempotency</li>
+    <li>Choose windows and watermarks: latency vs. completeness</li>
+  </ul>
+  <div class="sess-no">03</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Do you need streaming?</div>
+  <h2>Freshness is a requirement, not a default</h2>
+  <div class="cols cols-2 mid">
+    <div class="bars">
+      <div class="row"><span>nightly batch</span><div class="bar" style="--w:100%;--c:var(--navy)"></div><span class="val">~24 h</span></div>
+      <div class="row"><span>hourly micro-batch</span><div class="bar" style="--w:55%;--c:var(--teal)"></div><span class="val">~1 h</span></div>
+      <div class="row"><span>streaming micro-batch</span><div class="bar" style="--w:25%;--c:var(--cyan)"></div><span class="val">~1 min</span></div>
+      <div class="row"><span>record-at-a-time</span><div class="bar" style="--w:8%;--c:var(--coral)"></div><span class="val">&lt; 1 s</span></div>
+      <p class="xsmall muted mt-s mb0">Data latency, log scale (illustrative). Cost and operational effort grow as you go down.</p>
+    </div>
+    <div class="stack dense">
+      <div class="card c-teal flat"><b>Stream</b> when someone <b>acts</b> on the data within minutes: courier dispatch, fraud, stock-outs, a live SLA board.</div>
+      <div class="card c-navy flat"><b>Batch</b> when people look at it the next morning: finance, most dashboards, model training.</div>
+      <div class="card c-coral flat">Ask "what decision changes if this is 5 minutes old instead of 5 hours?"</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">The log</div>
+  <h2>A topic is a set of append-only, partitioned logs</h2>
+  <div class="cols cols-2 mid">
+    <div class="figure">
+      <svg viewBox="0 0 520 330" font-family="IBM Plex Sans, sans-serif" font-size="14">
+        <text x="10" y="22" font-weight="700" fill="#1c355e">topic: delivery-events (key = order_id)</text>
+        <g font-family="IBM Plex Mono, monospace" font-size="12">
+          <text x="10" y="66" fill="#1c355e" font-weight="600">P0</text>
+          <rect x="40" y="46" width="40" height="30" fill="#c9efe6"/><rect x="82" y="46" width="40" height="30" fill="#c9efe6"/><rect x="124" y="46" width="40" height="30" fill="#c9efe6"/><rect x="166" y="46" width="40" height="30" fill="#c9efe6"/><rect x="208" y="46" width="40" height="30" fill="#c9efe6"/><rect x="250" y="46" width="40" height="30" fill="#c9efe6"/>
+          <text x="52" y="66">0</text><text x="94" y="66">1</text><text x="136" y="66">2</text><text x="178" y="66">3</text><text x="220" y="66">4</text><text x="262" y="66">5</text>
+          <text x="10" y="126" fill="#1c355e" font-weight="600">P1</text>
+          <rect x="40" y="106" width="40" height="30" fill="#ffe3b3"/><rect x="82" y="106" width="40" height="30" fill="#ffe3b3"/><rect x="124" y="106" width="40" height="30" fill="#ffe3b3"/><rect x="166" y="106" width="40" height="30" fill="#ffe3b3"/>
+          <text x="52" y="126">0</text><text x="94" y="126">1</text><text x="136" y="126">2</text><text x="178" y="126">3</text>
+          <text x="10" y="186" fill="#1c355e" font-weight="600">P2</text>
+          <rect x="40" y="166" width="40" height="30" fill="#ffd3cb"/><rect x="82" y="166" width="40" height="30" fill="#ffd3cb"/><rect x="124" y="166" width="40" height="30" fill="#ffd3cb"/><rect x="166" y="166" width="40" height="30" fill="#ffd3cb"/><rect x="208" y="166" width="40" height="30" fill="#ffd3cb"/>
+          <text x="52" y="186">0</text><text x="94" y="186">1</text><text x="136" y="186">2</text><text x="178" y="186">3</text><text x="220" y="186">4</text>
+        </g>
+        <text x="300" y="66" fill="#5b6472" font-size="13">← producers append</text>
+        <line x1="165" y1="210" x2="165" y2="40" stroke="#1c355e" stroke-width="2" stroke-dasharray="5 4"/>
+        <text x="40" y="232" fill="#1c355e" font-size="13">group "sla-dashboard": committed offsets</text>
+        <line x1="249" y1="210" x2="249" y2="40" stroke="#ff6b4a" stroke-width="2" stroke-dasharray="5 4"/>
+        <text x="40" y="254" fill="#ff6b4a" font-size="13">group "fraud": further along, independent</text>
+        <text x="10" y="292" fill="#5b6472" font-size="13">Retained for days (or forever, tiered to object storage):</text>
+        <text x="10" y="312" fill="#5b6472" font-size="13">a new group can start at offset 0 and replay history.</text>
+      </svg>
+    </div>
+    <ul class="bullets small">
+      <li><b>Partition</b> = unit of order and parallelism. Same key → same partition → per-key order.</li>
+      <li><b>Offset</b> = position in a partition. Consumers track their own; reading doesn't delete.</li>
+      <li><b>Consumer group</b>: partitions are shared among its members; each group gets every record.</li>
+      <li><b>Kafka 4</b> runs on KRaft only (no ZooKeeper). Compatible: Redpanda, WarpStream, AutoMQ, cloud services (MSK, Event Hubs, Confluent Cloud).</li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Delivery guarantees</div>
+  <h2>At-most-once, at-least-once, "exactly-once"</h2>
+  <table class="t small">
+    <tr><th>Guarantee</th><th>Consumer does</th><th>After a crash</th></tr>
+    <tr><td><b>At-most-once</b></td><td>commit offsets, then process</td><td>the in-flight batch is <b>lost</b></td></tr>
+    <tr><td><b>At-least-once</b></td><td>process, then commit offsets</td><td>the in-flight batch is <b>processed twice</b></td></tr>
+    <tr class="hl"><td><b>Effectively-once</b></td><td>at-least-once + <b>idempotent</b> or <b>transactional</b> output</td><td>replays have no visible effect</td></tr>
+  </table>
+  <div class="cols cols-2 mt">
+    <div class="callout warn small"><b>In Lab 3.3</b> one crash plus the phones' own retries over-count deliveries by <b>117</b>. Counting each <code>event_id</code> once fixes both.</div>
+    <div class="callout tip small"><b>Idempotent sinks</b>: <code>MERGE</code> on a key (Lab 1.4), upsert into Iceberg, or commit output and offsets in <b>one transaction</b> (Labs 3.3 ✱ and 3.4).</div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Two clocks</div>
+  <h2>Event time vs. processing time</h2>
+  <div class="cols cols-2">
+    <div class="stack small">
+      <div class="card c-teal flat"><b>Event time</b>: when it happened (the courier's phone). What the business means by "deliveries between 21:00 and 21:15".</div>
+      <div class="card c-navy flat"><b>Processing time</b>: when the platform received it. Easy, but results change with network hiccups and replays.</div>
+      <div class="callout warn">And phones write event time in <b>three formats</b>: <code>+03:00</code>, <code>Z</code> and epoch millis. Parse first.</div>
+    </div>
+    <table class="t small">
+      <tr><th colspan="2">Lateness of Qafila courier events (Lab 3.3)</th></tr>
+      <tr><td>median</td><td>4.2 s</td></tr>
+      <tr><td>90th percentile</td><td>7.4 s</td></tr>
+      <tr><td>99th percentile</td><td>≈ 18 min</td></tr>
+      <tr><td>max</td><td>≈ 50 min</td></tr>
+      <tr><td colspan="2" class="xsmall muted">a long tail: phones offline in basements and car parks</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Windows</div>
+  <h2>Grouping an endless stream</h2>
+  <div class="cols cols-3">
+    <div class="card c-teal"><h4>Tumbling</h4><p class="small">Fixed, non-overlapping: deliveries per 15 minutes.</p><p class="xsmall muted mb0">[21:00, 21:15) [21:15, 21:30) …</p></div>
+    <div class="card c-cyan"><h4>Hopping / sliding</h4><p class="small">Fixed size, overlapping: orders in the last 15 minutes, every minute.</p><p class="xsmall muted mb0">[21:00, 21:15) [21:01, 21:16) …</p></div>
+    <div class="card c-coral"><h4>Session</h4><p class="small">Closed by a gap of inactivity: one courier shift, one browsing session.</p><p class="xsmall muted mb0">ends after 30 min without events</p></div>
+  </div>
+  <div class="callout note mt small">The hard question isn't the window's shape; it's <b>when a window is finished</b>. A delivery from 21:12 can arrive at 21:55.</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Watermarks</div>
+  <h2>A watermark says "I've probably seen everything before W"</h2>
+  <div class="cols cols-32">
+    <div>
+      <table class="t small">
+        <tr><th>Allowed lateness</th><th>Late events dropped</th><th>Windows exactly right</th><th>Median result delay</th></tr>
+        <tr><td>0 min</td><td>140</td><td>90.3%</td><td>1.1 min</td></tr>
+        <tr><td>10 min</td><td>108</td><td>92.5%</td><td>11.2 min</td></tr>
+        <tr><td>30 min</td><td>40</td><td>97.2%</td><td>31.1 min</td></tr>
+        <tr class="hl"><td>60 min</td><td>0</td><td>100%</td><td>61.1 min</td></tr>
+      </table>
+      <p class="xsmall muted mt-s mb0">Lab 3.3: delivered orders per city per 15-minute window, Sep 24–30, W = max event time − allowed lateness.</p>
+    </div>
+    <div class="stack small">
+      <div class="callout tip"><b>Latency vs. completeness</b> is a business decision. Ops wants it in 2 minutes and tolerates small errors; finance wants it exact and can wait.</div>
+      <div class="callout note">Escape hatches: Flink re-emits windows on late data; Spark drops state after the watermark; Kafka Streams has grace periods; or <b>recompute in batch</b>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">The engines</div>
+  <h2>Where these ideas live in production</h2>
+  <table class="t small">
+    <tr><th>Engine</th><th>Model</th><th>Typical use</th></tr>
+    <tr><td><b>Apache Flink</b></td><td>record-at-a-time, rich state and event-time support</td><td>low-latency pipelines, complex event processing, streaming SQL</td></tr>
+    <tr><td><b>Spark Structured Streaming</b></td><td>micro-batches (plus a real-time mode)</td><td>teams already on Spark/Databricks; streams into Delta/Iceberg</td></tr>
+    <tr><td><b>Kafka Streams</b></td><td>a library inside your Java service</td><td>event-driven microservices</td></tr>
+    <tr><td><b>Streaming databases</b></td><td>incrementally maintained SQL views</td><td>RisingWave, Materialize: "a table that's always up to date"</td></tr>
+  </table>
+  <div class="callout tip mt small">All of them implement what you build by hand in Lab 3.3: partitioned input, offsets in checkpoints, keyed state, windows and watermarks.</div>
+</section>
+
+<section class="slide lab top">
+  <div class="cols cols-2">
+    <div>
+      <div class="lab-tag">Lab 3.3 · 25 min</div>
+      <h2>Streaming from first principles</h2>
+      <a class="nb" href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D3_3_streaming_fundamentals.ipynb" target="_blank" rel="noopener">labs/D3_3_streaming_fundamentals.ipynb ↗</a>
+      <p class="small mt">Build a tiny Kafka and a tiny Flink in plain Python, and feed them a week of Qafila courier events.</p>
+    </div>
+    <ul class="checklist">
+      <li>Produce events into a 4-partition log, keyed by order <span class="min">5'</span></li>
+      <li>Consume with offsets; crash; make it idempotent <span class="min">6'</span></li>
+      <li>Event time vs. processing time: three formats <span class="min">5'</span></li>
+      <li>Windows and watermarks: measure the trade-off <span class="min">7'</span></li>
+      <li>Replay from offset 0 <span class="min">2'</span></li>
+      <li class="stretch">✱ Exactly-once: results and offsets in one transaction</li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide quiz">
+  <div class="kicker">Checkpoint</div>
+  <h2>Your consumer commits offsets <i>before</i> processing each batch. It crashes mid-batch. What happens?</h2>
+  <div class="opts">
+    <div class="opt" data-k="A">The batch is processed twice after restart</div>
+    <div class="opt" data-k="B" data-ok>The rest of that batch is never processed: data loss (at-most-once)</div>
+    <div class="opt" data-k="C">Nothing: Kafka re-sends uncommitted records automatically</div>
+  </div>
+  <div class="why callout tip small"><b>B.</b> The restart resumes after the committed offset, skipping what wasn't processed. Process first, commit after (at-least-once), and make processing idempotent.</div>
+</section>
+
+<section class="slide break" data-label="Break">
+  <div class="kicker">Break</div>
+  <h1>10-minute break</h1>
+  <div class="timer" data-minutes="10"></div>
+  <p class="lead">Next: Session 4 · Streams into the lakehouse</p>
+</section>
+
+<!-- ======================= SESSION 4: STREAMS → LAKEHOUSE ======================= -->
+<section class="slide section" data-session="Session 4 · Streams → lakehouse">
+  <div class="kicker">Session 4</div>
+  <h1>Streams into the lakehouse</h1>
+  <ul class="bullets outcomes tight">
+    <li>Land a stream in an Iceberg table exactly once</li>
+    <li>Keep streaming tables healthy: compaction and maintenance</li>
+    <li>Choose between Lambda and Kappa architectures</li>
+  </ul>
+  <div class="sess-no">04</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">The pattern</div>
+  <h2>A streaming lakehouse, end to end</h2>
+  <div class="flow">
+    <div class="step c-navy"><b>Producers</b>courier app · OLTP CDC (Debezium)</div>
+    <div class="arrow">→</div>
+    <div class="step c-teal"><b>Log</b>Kafka topics<br><small>replayable buffer</small></div>
+    <div class="arrow">→</div>
+    <div class="step c-cyan"><b>Stream job</b>Flink / Spark<br><small>parse · dedupe · window</small></div>
+    <div class="arrow">→</div>
+    <div class="step c-coral"><b>Iceberg</b>bronze → silver<br><small>exactly-once commits</small></div>
+    <div class="arrow">→</div>
+    <div class="step c-purple"><b>Serve</b>SQL · dashboards · dbt</div>
+  </div>
+  <div class="cols cols-3 gap-s mt">
+    <div class="card c-teal"><h4>Kafka Connect sinks</h4><p class="small mb0">The Iceberg sink connector lands topics as tables with no custom code.</p></div>
+    <div class="card c-cyan"><h4>Topic = table</h4><p class="small mb0">Confluent <b>Tableflow</b> and Redpanda Iceberg topics expose topics directly as Iceberg tables.</p></div>
+    <div class="card c-coral"><h4>Streaming jobs</h4><p class="small mb0">Flink and Spark write Iceberg/Delta natively, with checkpoints tied to commits.</p></div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Exactly-once into a table</div>
+  <h2>Commit the data and the offset together</h2>
+  <div class="cols cols-2">
+    <pre class="code s" data-file="Lab 3.4"><code class="language-python">def commit_batch(tbl, rows, end_offset, batch_end):
+    tbl.append(to_arrow(rows), snapshot_properties={
+        "qafila.offset": str(end_offset),
+        "qafila.batch_end": batch_end.isoformat()})
+
+def committed_offset(tbl) -> int:
+    for snap in reversed(tbl.snapshots()):
+        off = snap.summary.additional_properties \
+                  .get("qafila.offset")
+        if off is not None:
+            return int(off)
+    return 0</code></pre>
+    <div class="stack small">
+      <div class="callout tip">One Iceberg commit = data + progress. There is no moment where one is saved and the other isn't, so a restart resumes exactly where the table says.</div>
+      <div class="callout note">Producer duplicates still need a key: a <b>bounded</b> set of recent <code>event_id</code>s (Spark's <code>dropDuplicatesWithinWatermark</code>).</div>
+      <div class="callout warn">Lab 3.4: crash after 40 of 179 batches, restart: <b>13,316 rows, 13,316 distinct, 0 duplicates</b>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Table health</div>
+  <h2>Streaming creates small files by design</h2>
+  <div class="cols cols-2 mid">
+    <table class="t small">
+      <tr><th>Lab 3.4, 4 days of events</th><th>Before</th><th>After compaction</th></tr>
+      <tr><td>data files</td><td>179</td><td>4</td></tr>
+      <tr><td>average file size</td><td>4.9 kB</td><td>76 kB</td></tr>
+      <tr><td>full table scan</td><td>~0.9 s</td><td>0.03 s</td></tr>
+      <tr><td>rows</td><td>13,316</td><td>13,316</td></tr>
+    </table>
+    <div class="stack dense">
+      <div class="card c-teal flat"><b>Compact</b>: rewrite small files per partition (Spark <code>rewrite_data_files</code>, or managed: S3 Tables, Databricks, Snowflake).</div>
+      <div class="card c-cyan flat"><b>Expire snapshots</b> and <b>remove orphan files</b>: otherwise storage only grows.</div>
+      <div class="card c-coral flat"><b>Rewrite manifests</b> and sort/cluster data for the common filters.</div>
+    </div>
+  </div>
+  <div class="callout note mt small">Maintenance commits can conflict with the streaming writer: schedule them on cold partitions (yesterday's), and let optimistic concurrency retry.</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Architectures</div>
+  <h2>Lambda vs. Kappa</h2>
+  <div class="cols cols-2">
+    <div class="card c-navy"><h4>Lambda</h4>
+      <p class="small">A <b>batch</b> layer recomputes the truth nightly; a <b>speed</b> layer gives approximate real-time results; queries merge both.</p>
+      <p class="xsmall muted mb0">✗ two code paths for one metric, which drift apart</p></div>
+    <div class="card c-teal"><h4>Kappa</h4>
+      <p class="small">One <b>streaming</b> path. To fix a bug or add a metric, <b>replay the log</b> through the new job.</p>
+      <p class="xsmall muted mb0">✓ one code path · needs long retention and replayable sinks</p></div>
+  </div>
+  <div class="callout tip mt small"><b>The 2026 middle ground</b>: stream into Iceberg (bronze), then run the <b>same dbt models</b> on a short schedule (every 5–15 min) with incremental reads. One code path, near-real-time, and late data simply lands in the next run.</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">The payoff</div>
+  <h2>Qafila's real-time delivery SLA</h2>
+  <div class="cols cols-2 mid">
+    <div class="bars">
+      <div class="row"><span>DMM-01</span><div class="bar" style="--w:78%"></div><span class="val">78%</span></div>
+      <div class="row"><span>JED-01</span><div class="bar" style="--w:71%"></div><span class="val">71%</span></div>
+      <div class="row"><span>RUH-02</span><div class="bar" style="--w:74%"></div><span class="val">74%</span></div>
+      <div class="row"><span>RUH-05</span><div class="bar" style="--w:72%"></div><span class="val">72%</span></div>
+      <div class="row"><span>RUH-01 (Olaya)</span><div class="bar" style="--w:37%;--c:var(--coral)"></div><span class="val">37%</span></div>
+      <p class="xsmall muted mt-s mb0">Share of orders delivered within 30 minutes, Sep 24–27 average (Lab 3.4).</p>
+    </div>
+    <div class="stack small">
+      <div class="callout tip">The query runs <b>straight off the Iceberg table</b> with DuckDB: stream events joined with OLTP orders.</div>
+      <div class="callout warn"><b>Late data</b> changes recent numbers: the dashboard at 22:00 showed 69 deliveries for 21:00–22:00; the table now says 71. Say which version each consumer gets.</div>
+      <div class="callout note">Downstream jobs read only what's new: <code>tbl.incremental_append_scan(from_snapshot_id_exclusive=…)</code>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide lab top">
+  <div class="cols cols-2">
+    <div>
+      <div class="lab-tag">Lab 3.4 · 25 min</div>
+      <h2>Streams into the lakehouse</h2>
+      <a class="nb" href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D3_4_stream_to_lakehouse.ipynb" target="_blank" rel="noopener">labs/D3_4_stream_to_lakehouse.ipynb ↗</a>
+      <p class="small mt">A crash-proof micro-batch sink into Iceberg, compaction, and the live SLA dashboard query.</p>
+    </div>
+    <ul class="checklist">
+      <li>A bronze table and a sink that checkpoints in the table <span class="min">6'</span></li>
+      <li>Crash, restart, no duplicates <span class="min">5'</span></li>
+      <li>Small files and compaction <span class="min">5'</span></li>
+      <li>The SLA query, straight off the table <span class="min">5'</span></li>
+      <li>Incremental reads for the next job <span class="min">4'</span></li>
+      <li class="stretch">✱ Time travel the dashboard: late data rewrites the last hour</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ======================= WRAP-UP ======================= -->
+<section class="slide" data-label="Day 3 wrap-up">
+  <div class="kicker">Day 3 deliverable</div>
+  <h2>What you built today</h2>
+  <div class="flow">
+    <div class="step c-navy"><b>Tables</b>Iceberg: snapshots, evolution, many engines</div>
+    <div class="arrow">→</div>
+    <div class="step c-teal"><b>Scale</b>Spark plans, joins, skew, files</div>
+    <div class="arrow">→</div>
+    <div class="step c-cyan"><b>Streams</b>logs, offsets, windows, watermarks</div>
+    <div class="arrow">→</div>
+    <div class="step c-coral"><b>Real time</b>exactly-once into Iceberg, live SLA</div>
+  </div>
+  <div class="cols cols-3 mt">
+    <div class="card c-teal"><h4>Remember</h4><p class="small mb0">A table is metadata that lists files. The catalog decides what "current" means.</p></div>
+    <div class="card c-cyan"><h4>Remember</h4><p class="small mb0">Look for <code>Exchange</code> in the plan; check task sizes for skew.</p></div>
+    <div class="card c-coral"><h4>Remember</h4><p class="small mb0">Exactly-once = at-least-once + idempotent or transactional output.</p></div>
+  </div>
+</section>
+
+<section class="slide" data-label="Capstone">
+  <div class="kicker">Capstone</div>
+  <h2>Does your project need a table format or a stream?</h2>
+  <div class="cols cols-2">
+    <ol class="bullets small">
+      <li><b>Storage</b>: DuckDB file, Parquet, or Iceberg? Write down why.</li>
+      <li><b>Freshness</b>: what's the slowest acceptable refresh for each output?</li>
+      <li><b>Late or duplicated data</b>: which sources have it, and what's your key?</li>
+      <li><b>Scale</b>: would any step need Spark at 100× today's volume?</li>
+    </ol>
+    <div class="callout tip small"><b>Option C</b> (real-time operations monitor) builds directly on Labs 3.3 and 3.4. Tomorrow adds orchestration, contracts and governance, and the capstone kit.</div>
+  </div>
+</section>
+
+<section class="slide dark" data-label="Next">
+  <div class="kicker">Tomorrow · Day 4</div>
+  <h1>Operate, Govern &amp; Serve</h1>
+  <p class="lead mt">Run it on a schedule, know when it breaks, protect people's data, and feed AI.</p>
+  <div class="cols cols-4 gap-s mt">
+    <div class="card c-teal"><h4>Orchestration</h4><p class="small mb0">Dagster assets, partitions, backfills</p></div>
+    <div class="card c-cyan"><h4>Observability</h4><p class="small mb0">Freshness, volume, data contracts</p></div>
+    <div class="card c-coral"><h4>Governance</h4><p class="small mb0">PDPL, NDMO classification, masking</p></div>
+    <div class="card c-amber"><h4>Data for AI</h4><p class="small mb0">Semantic layer, embeddings, text-to-SQL</p></div>
+  </div>
+</section>
+
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="../assets/logo.js"></script>
+<script src="../assets/deck.js"></script>
+</body>
+</html>

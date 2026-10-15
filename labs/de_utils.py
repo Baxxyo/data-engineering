@@ -14,6 +14,7 @@ import subprocess
 import sys
 import threading
 import time
+import warnings
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -296,7 +297,56 @@ def get_catalog(root: Path | str = ICEBERG, name: str = "qafila"):
 
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
-    return SqlCatalog(name, uri=f"sqlite:///{(root / 'catalog.db').as_posix()}", warehouse=root.as_uri())
+    # a plain path (not a file:// URI) keeps Windows drive letters working with PyArrow
+    return SqlCatalog(name, uri=f"sqlite:///{(root / 'catalog.db').as_posix()}", warehouse=root.resolve().as_posix())
+
+
+def _java_major() -> int:
+    """Major version of the `java` on PATH / JAVA_HOME (0 if none)."""
+    import re
+
+    java = Path(os.environ["JAVA_HOME"]) / "bin" / "java" if os.getenv("JAVA_HOME") else shutil.which("java")
+    if not java:
+        return 0
+    try:
+        out = subprocess.run([str(java), "-version"], capture_output=True, text=True).stderr
+    except OSError:
+        return 0
+    m = re.search(r'version "(\d+)', out)
+    return int(m.group(1)) if m else 0
+
+
+def get_spark(app: str = "qafila", cores: int = 2, shuffle_partitions: int = 8):
+    """A local SparkSession (Spark 4 needs Java 17+). On Colab, installs Java 17 / PySpark 4 if missing."""
+    if "google.colab" in sys.modules:
+        if _java_major() < 17:
+            print("installing OpenJDK 17 (one-off, ~1 min)...")
+            subprocess.run("apt-get install -y -qq openjdk-17-jdk-headless > /dev/null", shell=True, check=True)
+            os.environ["JAVA_HOME"] = "/usr/lib/jvm/java-17-openjdk-amd64"
+        try:
+            import pyspark
+            ok = int(pyspark.__version__.split(".")[0]) >= 4
+        except ImportError:
+            ok = False
+        if not ok:
+            subprocess.run([sys.executable, "-m", "pip", "install", "-q", "pyspark>=4.0"], check=True)
+            for m in [m for m in sys.modules if m.startswith("pyspark")]:
+                del sys.modules[m]
+    if _java_major() < 17:
+        raise RuntimeError("Spark 4 needs Java 17+: install a JDK (e.g. Temurin 21) and set JAVA_HOME, or run this lab on Colab.")
+    os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
+    os.environ.setdefault("PYSPARK_DRIVER_PYTHON", sys.executable)
+    warnings.filterwarnings("ignore", message=".*pandas >= 3.*")
+    from pyspark.sql import SparkSession
+
+    spark = (SparkSession.builder.appName(app).master(f"local[{cores}]")
+             .config("spark.sql.shuffle.partitions", shuffle_partitions)
+             .config("spark.sql.session.timeZone", "Asia/Riyadh")
+             .config("spark.ui.showConsoleProgress", "false")
+             .config("spark.driver.memory", "2g")
+             .getOrCreate())
+    spark.sparkContext.setLogLevel("ERROR")
+    return spark
 
 
 def duckdb_iceberg(con) -> None:
