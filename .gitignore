@@ -12,3 +12,4 @@ labs/dbt_qafila/dbt_packages/
 .dlt/
 *.duckdb
 *.duckdb.wal
+labs/dbt_qafila/.user.yml
