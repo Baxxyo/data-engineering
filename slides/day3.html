@@ -318,10 +318,10 @@ with orders.update_spec() as spec:
   <div class="kicker">Lazy evaluation</div>
   <h2>Transformations build a plan; actions run it</h2>
   <div class="cols cols-2">
-    <pre class="code s" data-file="Lab 3.2"><code class="language-python">orders = spark.read.parquet("lake/orders")  # partitioned by order_date
+    <pre class="code s" data-file="Lab 3.2"><code class="language-python">orders = spark.read.parquet("lake/orders")  # by order_date
 national_day = orders.filter(
     (F.col("order_date") == "2026-09-23")
-    &amp; (F.col("status") == "delivered"))      # nothing runs yet
+    &amp; (F.col("status") == "delivered"))  # nothing runs
 national_day.count()                         # action → 1 job
 national_day.explain()
 # FileScan parquet ...

@@ -237,7 +237,8 @@
   if (window.hljs) document.querySelectorAll('pre.code code').forEach((c) => window.hljs.highlightElement(c));
 
   /* ---------- layout self-check: open with ?check to list overflowing slides ---------- */
-  if (location.search.includes("check")) {
+  if (location.search.includes("check")) (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => {
+    // measured after web fonts load: fallback fonts are narrower and hide overflow
     const issues = [];
     slides.forEach((s, i) => {
       show(i);
@@ -247,12 +248,18 @@
         if (el.scrollHeight > el.clientHeight + 2) issues.push((i + 1) + ": " + el.tagName.toLowerCase() + "." + el.className + " overflows y by " + (el.scrollHeight - el.clientHeight) + "px");
         if (el.scrollWidth > el.clientWidth + 2) issues.push((i + 1) + ": " + el.tagName.toLowerCase() + "." + el.className + " overflows x by " + (el.scrollWidth - el.clientWidth) + "px");
       });
+      s.querySelectorAll("pre.code > code").forEach((c) => {  // long lines can hide in the pre's right padding
+        const pre = c.parentElement, cs = getComputedStyle(pre);
+        const inner = pre.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+        if (c.scrollWidth > inner + 2) issues.push((i + 1) + ": code line too long by " + Math.round(c.scrollWidth - inner) + "px");
+      });
     });
     const out = document.createElement("pre");
     out.id = "check-report";
     out.textContent = "CHECK " + slides.length + " slides\n" + (issues.join("\n") || "OK");
     document.body.appendChild(out);
-  }
+    show(Number.isFinite(start) ? start - 1 : 0);
+  });
 
   const start = parseInt(location.hash.slice(1), 10);
   show(Number.isFinite(start) ? start - 1 : 0);

@@ -120,13 +120,13 @@
         <li>Cells marked <b>✱ Stretch</b> are optional for fast finishers.</li>
       </ol>
     </div>
-    <pre class="code" data-file="terminal (local option)"><code class="language-bash">git clone https://github.com/SDAIAAcademy/data-engineering
+    <pre class="code s" data-file="terminal (local option)"><code class="language-bash">git clone https://github.com/SDAIAAcademy/data-engineering
 cd data-engineering/labs
-uv sync                       # creates .venv from pyproject
-uv run python prepare_data.py # generates data/raw/
+uv sync                        # creates .venv
+uv run python prepare_data.py  # data/raw/
 uv run jupyter lab</code></pre>
   </div>
-  <div class="callout warn mt small"><b>No Java locally?</b> Everything runs on a laptop CPU except Lab 3.2 (Spark), which needs Java 17+. Colab has it, so use Colab for that one lab.</div>
+  <div class="callout warn mt-s small"><b>No Java locally?</b> Every lab runs on a laptop CPU except Lab 3.2 (Spark, Java 17+): run that one on Colab, where the notebook installs Java.</div>
 </section>
 
 <!-- ======================= SESSION 1: THE PLATFORM ======================= -->
@@ -240,17 +240,18 @@ uv run jupyter lab</code></pre>
   <h2>DuckDB: an analytical database in a library</h2>
   <div class="cols cols-2">
     <pre class="code s"><code class="language-python">import duckdb
-con = duckdb.connect()            # in-memory; or "qafila.duckdb"
+con = duckdb.connect()   # in-memory, or "qafila.duckdb"
 
 # Query files where they are: no load step
 con.sql("""
   SELECT event_type, count(*) AS n
-  FROM read_json_auto('data/raw/events/delivery_events.jsonl')
+  FROM 'data/raw/events/delivery_events.jsonl'
   GROUP BY ALL ORDER BY n DESC
 """).show()
 
 # Attach the app database (read-only) and join across sources
-con.sql("ATTACH 'data/raw/qafila_oltp.sqlite' AS app (TYPE sqlite, READ_ONLY)")
+con.sql("ATTACH 'data/raw/qafila_oltp.sqlite' AS app "
+        "(TYPE sqlite, READ_ONLY)")
 con.sql("""
   SELECT s.city, count(*) AS orders
   FROM app.orders o JOIN app.stores s USING (store_id)
@@ -552,7 +553,8 @@ con.sql("""SELECT count(*) FROM read_parquet(
       <div class="card c-navy"><h4>Full extract</h4><p class="small mb0">Copy everything, every time. Simple and always correct, including deletes. Fine for small tables (stores, products).</p></div>
       <div class="card c-teal"><h4>Incremental extract</h4><p class="small mb0">Copy only what changed since the last run, using a <b>cursor</b> (high-water mark) like <code>updated_at</code> or an increasing ID.</p></div>
     </div>
-    <pre class="code s"><code class="language-sql">-- state from the previous run: last_value = '2026-09-29 23:58:10'
+    <pre class="code s"><code class="language-sql">-- state from the previous run:
+--   last_value = '2026-09-29 23:58:10'
 SELECT *
 FROM orders
 WHERE updated_at > :last_value      -- strictly greater?
@@ -574,16 +576,16 @@ def get_with_retry(url, params, tries=6):
         if r.status_code == 429 or r.status_code >= 500:
             wait = float(r.headers.get("Retry-After", 0)) \
                    or min(60, 2 ** attempt) + random.random()
-            time.sleep(wait)          # exponential backoff + jitter
+            time.sleep(wait)   # exponential backoff + jitter
             continue
-        r.raise_for_status()          # 4xx: a bug, don't retry
+        r.raise_for_status()   # 4xx: a bug, don't retry
         return r.json()
     raise RuntimeError(f"gave up after {tries} tries")
 
 page, rows = 1, []
 while page:
-    body = get_with_retry(f"{BASE}/payments",
-                          {"updated_since": cursor, "page": page})
+    params = {"updated_since": cursor, "page": page}
+    body = get_with_retry(f"{BASE}/payments", params)
     rows += body["data"]
     page = body["next_page"]</code></pre>
     <div class="stack small">
@@ -643,13 +645,15 @@ while page:
   <div class="cols cols-2">
     <pre class="code s"><code class="language-python">import dlt
 from dlt.sources.helpers.rest_client import RESTClient
-from dlt.sources.helpers.rest_client.paginators import JSONResponsePaginator
+from dlt.sources.helpers.rest_client.paginators import (
+    JSONResponsePaginator)
 
-@dlt.resource(primary_key="payment_id", write_disposition="merge")
+@dlt.resource(primary_key="payment_id",
+              write_disposition="merge")
 def payments(updated=dlt.sources.incremental(
         "updated_at", initial_value="2026-08-01T00:00:00Z")):
-    client = RESTClient(base_url=API,
-        paginator=JSONResponsePaginator(next_url_path="next"))
+    client = RESTClient(base_url=API, paginator=
+        JSONResponsePaginator(next_url_path="next"))
     for page in client.paginate("/payments",
             params={"updated_since": updated.last_value}):
         yield page
@@ -657,7 +661,7 @@ def payments(updated=dlt.sources.incremental(
 pipe = dlt.pipeline("qafila", destination="duckdb",
                     dataset_name="raw")
 info = pipe.run(payments())
-print(info)   # load id, tables, rows; state saved in the destination</code></pre>
+print(info)   # load id, tables, rows; state is saved too</code></pre>
     <div class="stack small">
       <div class="card c-teal flat"><b>Incremental state</b>: the cursor is stored with the data and committed with it.</div>
       <div class="card c-cyan flat"><b>Write dispositions</b>: <code>append</code>, <code>replace</code>, <code>merge</code> (on <code>primary_key</code>).</div>
@@ -739,9 +743,9 @@ print(info)   # load id, tables, rows; state saved in the destination</code></pr
     <pre class="code s" data-file="data/raw/cdc/customers_changes.jsonl (one line, formatted)"><code class="language-json">{
   "op": "u",
   "before": {"customer_id": 104063, "city": "Jeddah",
-             "district": "Obhur", "mobile": "0541622064", "...": "..."},
+             "district": "Obhur", "...": "..."},
   "after":  {"customer_id": 104063, "city": "Riyadh",
-             "district": "Hittin", "mobile": "0541622064", "...": "..."},
+             "district": "Hittin", "...": "..."},
   "source": {"db": "qafila", "table": "customers",
              "lsn": 5012874},
   "ts_ms": 1758802245000

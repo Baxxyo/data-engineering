@@ -428,7 +428,7 @@ SELECT (SELECT sum(net_amount)
 profiles.yml           # connection (DuckDB file)
 macros/text.sql        # normalize_arabic, to_riyadh, ...
 models/
-  staging/             # 1:1 with sources: clean, rename, cast
+  staging/             # 1:1 with sources: clean, cast
     _sources.yml
     stg_orders.sql
   intermediate/        # reusable building blocks
