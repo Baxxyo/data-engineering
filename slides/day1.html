@@ -1,0 +1,884 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Day 1 · Modern Data Engineering</title>
+<link rel="icon" href="../assets/img/academy.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+Arabic:wght@400;600;700&family=IBM+Plex+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+<link rel="stylesheet" href="../assets/deck.css">
+</head>
+<body>
+<div class="deck" data-day="Day 1" data-course="Modern Data Engineering">
+
+<!-- ======================= OPENING ======================= -->
+<section class="slide title" data-label="Welcome">
+  <div class="kicker">SDAIA Academy · Modern Data Engineering</div>
+  <h1>From Raw Sources to a Governed Lakehouse</h1>
+  <p class="lead mt">Day 1: Data Platforms, Storage &amp; Ingestion</p>
+  <div class="meta">
+    <span class="track">Data Engineering Track</span>
+    <span>4 teaching days + capstone day</span>
+    <span>16 hands-on labs</span>
+    <span>Python + SQL</span>
+  </div>
+  <aside class="notes">Welcome everyone, introduce yourself and the TA. Quick poll: who writes SQL weekly? Who has scheduled a pipeline (cron, Airflow, anything)? Who has used Spark, dbt or Kafka? Use the answers to calibrate pace: Day 1 is foundations for some and review for others.</aside>
+</section>
+
+<section class="slide" data-label="Course overview">
+  <div class="kicker">The bootcamp at a glance</div>
+  <h2>Five days, one evolving platform</h2>
+  <div class="cols cols-4 gap-s">
+    <div class="card c-teal"><h4>Day 1 · Land</h4><p class="small">Platforms, columnar files, batch ingestion, change data capture.</p><span class="pill c-teal">Raw layer + SCD2</span></div>
+    <div class="card c-cyan"><h4>Day 2 · Model</h4><p class="small">DuckDB &amp; Polars, dimensional modeling, dbt, data quality.</p><span class="pill c-cyan">Tested star schema</span></div>
+    <div class="card c-coral"><h4>Day 3 · Scale</h4><p class="small">Iceberg lakehouse, Spark, streaming, streams into tables.</p><span class="pill c-coral">Lakehouse + real-time</span></div>
+    <div class="card c-purple"><h4>Day 4 · Operate</h4><p class="small">Orchestration, contracts, governance &amp; privacy, data for AI.</p><span class="pill c-purple">Governed, AI-ready</span></div>
+  </div>
+  <div class="callout tip mt"><b>Day 5 · Capstone.</b> Teams present a working data platform: live demo, design decisions, technical Q&amp;A. Everything you build in the labs is a reusable piece of it.</div>
+</section>
+
+<section class="slide" data-label="How we work">
+  <div class="kicker">Course philosophy</div>
+  <h2>Pipelines are software. Treat them that way.</h2>
+  <div class="cols cols-2">
+    <div>
+      <ul class="bullets">
+        <li><b>~40% concepts, ~60% hands-on.</b> Every session ends in a 25-minute lab.</li>
+        <li><b>Open tools, laptop scale.</b> DuckDB, Polars, Parquet, dlt, dbt, Iceberg, Spark, Dagster. The same ideas run on any cloud.</li>
+        <li><b>Re-runnable or it didn't happen.</b> Every load we write is idempotent and incremental.</li>
+        <li><b>Trust is a feature.</b> Tests, contracts and lineage from Day 2, not "later".</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="card c-navy flat"><h4>You should already know</h4><p class="small mb0">Python, SQL (joins, GROUP BY), basic command line, Git.</p></div>
+      <div class="card c-teal flat"><h4>You don't need</h4><p class="small mb0">Spark, dbt, Kafka, cloud accounts or Docker.</p></div>
+      <div class="card c-coral flat"><h4>You will leave with</h4><p class="small mb0">16 working notebooks, a dbt project, a lakehouse and a capstone repo.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-label="Case study">
+  <div class="kicker">One case study, all week</div>
+  <h2>Qafila: quick-commerce groceries in 30 minutes</h2>
+  <p class="lead">A fictional delivery platform with 12 dark stores in Riyadh, Jeddah and Dammam. Its data is scattered, messy and growing. You will build its data platform.</p>
+  <div class="flow mt">
+    <div class="step c-navy"><b>Sources</b>app DB · payments API · CDC · delivery events · supplier files</div>
+    <div class="arrow">→</div>
+    <div class="step c-teal"><b>Ingest</b>dlt, CDC, streams<br><small>Day 1 · Day 3</small></div>
+    <div class="arrow">→</div>
+    <div class="step c-cyan"><b>Model + test</b>dbt star schema<br><small>Day 2</small></div>
+    <div class="arrow">→</div>
+    <div class="step c-coral"><b>Lakehouse</b>Iceberg tables<br><small>Day 3</small></div>
+    <div class="arrow">→</div>
+    <div class="step c-purple"><b>Operate</b>orchestrate, govern, AI<br><small>Day 4</small></div>
+  </div>
+  <aside class="notes">Stress that every lab adds a component to the same platform. By Day 4 they will have run the full thing end to end, and the capstone reuses it.</aside>
+</section>
+
+<section class="slide" data-label="Data">
+  <div class="kicker">The data we use</div>
+  <h2>Synthetic, bilingual, and realistically messy</h2>
+  <table class="t small">
+    <tr><th>Source</th><th>Shape</th><th>Volume</th><th>Built-in problems</th></tr>
+    <tr><td><b>App database</b> (SQLite)</td><td>customers, stores, products, orders, order_items</td><td class="num">46k orders · 173k lines</td><td>duplicate accounts, orphan orders, negative quantities</td></tr>
+    <tr><td><b>Payments API</b></td><td>paginated JSON, cursor on <code>updated_at</code></td><td class="num">42k payments</td><td>rate limits, retries, a new field mid-month</td></tr>
+    <tr><td><b>Customer CDC</b></td><td>Debezium-style change events</td><td class="num">6.3k events</td><td>duplicates, out of order, hard deletes</td></tr>
+    <tr><td><b>Delivery events</b></td><td>JSON lines, device time + ingest time</td><td class="num">22k events</td><td>late, duplicated, three timestamp formats</td></tr>
+    <tr><td><b>Supplier prices</b></td><td>weekly CSV drops</td><td class="num">4 files</td><td>decimal commas, <span class="ar">٣٫٥٠</span>, renamed column</td></tr>
+    <tr><td><b>Reviews &amp; catalog</b></td><td>Arabic + English free text</td><td class="num">3k reviews</td><td>for search and AI on Day 4</td></tr>
+  </table>
+  <p class="xsmall muted mt-s">Generated deterministically by <code>labs/prepare_data.py</code>: everyone gets identical data, labs run offline, and no real person's data is involved. National IDs and IBANs have valid check digits but are random.</p>
+  <aside class="notes">Mention that the data issues are listed in data/raw/DATA_ISSUES.txt, but ask participants not to read it before Lab 1.1: finding the issues is the exercise.</aside>
+</section>
+
+<section class="slide" data-label="Agenda">
+  <div class="kicker">Today</div>
+  <h2>Day 1 agenda</h2>
+  <div class="agenda">
+    <div class="item"><span><b>Session 1 · The modern data platform</b><small>Welcome, setup, lifecycle, architectures, a first look at the data with DuckDB</small></span><span class="d">50 min</span></div>
+    <div class="item brk"><span>Break</span><span class="d">10 min</span></div>
+    <div class="item"><span><b>Session 2 · Files &amp; columnar storage</b><small>Parquet internals, compression, partitioning, pushdown</small></span><span class="d">50 min</span></div>
+    <div class="item brk"><span>Long break</span><span class="d">20 min</span></div>
+    <div class="item"><span><b>Session 3 · Batch ingestion</b><small>APIs and databases, incremental loads, idempotency, schema evolution, dlt</small></span><span class="d">50 min</span></div>
+    <div class="item brk"><span>Break</span><span class="d">10 min</span></div>
+    <div class="item"><span><b>Session 4 · Change data capture &amp; load strategies</b><small>Debezium events, MERGE, deletes, slowly changing dimensions</small></span><span class="d">50 min</span></div>
+  </div>
+</section>
+
+<section class="slide" data-label="Setup">
+  <div class="kicker">Lab environment</div>
+  <h2>Run everything before you need it</h2>
+  <div class="cols cols-2">
+    <div>
+      <ol class="bullets">
+        <li>Open the course repo in <b>Google Colab</b> <span class="muted">or</span> locally with <code>uv</code>.</li>
+        <li>Run <a href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/00_setup_check.ipynb" target="_blank" rel="noopener"><code>00_setup_check.ipynb</code></a>: installs packages, generates the data, smoke-tests every tool.</li>
+        <li>Each lab opens with a <b>Setup</b> cell and ends with <b>Checkpoint</b> questions.</li>
+        <li>Cells marked <b>✱ Stretch</b> are optional for fast finishers.</li>
+      </ol>
+    </div>
+    <pre class="code" data-file="terminal (local option)"><code class="language-bash">git clone https://github.com/SDAIAAcademy/data-engineering
+cd data-engineering/labs
+uv sync                       # creates .venv from pyproject
+uv run python prepare_data.py # generates data/raw/
+uv run jupyter lab</code></pre>
+  </div>
+  <div class="callout warn mt small"><b>No Java locally?</b> Everything runs on a laptop CPU except Lab 3.2 (Spark), which needs Java 17+. Colab has it, so use Colab for that one lab.</div>
+</section>
+
+<!-- ======================= SESSION 1: THE PLATFORM ======================= -->
+<section class="slide section" data-session="Session 1 · The data platform">
+  <div class="kicker">Session 1</div>
+  <h1>The modern data platform</h1>
+  <ul class="bullets outcomes tight">
+    <li>Describe the data engineering lifecycle and the jobs in it</li>
+    <li>Compare warehouse, lake and lakehouse architectures; ETL vs. ELT</li>
+    <li>Query files and databases in place with DuckDB and profile a new source</li>
+  </ul>
+  <div class="sess-no">01</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">What data engineers do</div>
+  <h2>Move data from where it is born to where it creates value</h2>
+  <div class="flow">
+    <div class="step c-navy"><b>Generation</b>apps, devices, partners</div>
+    <div class="arrow">→</div>
+    <div class="step c-teal"><b>Ingestion</b>batch, CDC, streams</div>
+    <div class="arrow">→</div>
+    <div class="step c-teal"><b>Storage</b>files, tables, catalogs</div>
+    <div class="arrow">→</div>
+    <div class="step c-cyan"><b>Transformation</b>clean, model, aggregate</div>
+    <div class="arrow">→</div>
+    <div class="step c-coral"><b>Serving</b>BI, ML, AI, reverse ETL</div>
+  </div>
+  <p class="small muted mt mb0">Undercurrents that run through every stage:</p>
+  <div class="mt-s">
+    <span class="pill c-purple">Security &amp; privacy</span><span class="pill c-purple">Data management &amp; governance</span><span class="pill c-purple">DataOps &amp; observability</span>
+    <span class="pill c-purple">Architecture</span><span class="pill c-purple">Orchestration</span><span class="pill c-purple">Software engineering</span>
+  </div>
+  <div class="callout note mt small">Framework from Reis &amp; Housley, <i>Fundamentals of Data Engineering</i> (O'Reilly). We visit each stage this week, and each undercurrent gets its own session.</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Two very different workloads</div>
+  <h2>OLTP runs the business. OLAP understands it.</h2>
+  <table class="t">
+    <tr><th></th><th>OLTP (the Qafila app)</th><th>OLAP (the Qafila platform)</th></tr>
+    <tr><td><b>Query</b></td><td>"Insert this order", "get customer 104063"</td><td>"Revenue by city and week, last 8 weeks"</td></tr>
+    <tr><td><b>Rows touched</b></td><td>a few, by primary key</td><td>millions, a few columns</td></tr>
+    <tr><td><b>Layout</b></td><td>row-oriented (PostgreSQL, MySQL, SQLite)</td><td>column-oriented (DuckDB, Snowflake, BigQuery, Parquet)</td></tr>
+    <tr><td><b>Schema</b></td><td>normalized (3NF), many joins</td><td>denormalized stars, wide tables</td></tr>
+    <tr><td><b>Freshness</b></td><td>now</td><td>minutes to a day is usually fine</td></tr>
+  </table>
+  <div class="callout warn mt small"><b>Rule of thumb:</b> never point dashboards at the production app database. Copy the data out (ingestion) and serve analytics from a system built for it.</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Architectures</div>
+  <h2>Warehouse, lake, lakehouse</h2>
+  <div class="cols cols-3">
+    <div class="card c-navy"><h4>Data warehouse</h4><p class="small">Managed SQL engine with its own storage format. Strong governance and performance.</p><p class="xsmall muted mb0">Snowflake, BigQuery, Redshift, Synapse</p></div>
+    <div class="card c-teal"><h4>Data lake</h4><p class="small">Cheap object storage full of files (Parquet, JSON, CSV). Flexible, but "files are not tables": no transactions, no safe updates.</p><p class="xsmall muted mb0">S3, ADLS, GCS, HDFS, MinIO</p></div>
+    <div class="card c-coral"><h4>Lakehouse</h4><p class="small">Files on object storage <b>plus an open table format</b> (ACID, schema, time travel) <b>plus a catalog</b>. Many engines, one copy.</p><p class="xsmall muted mb0">Iceberg, Delta Lake, Hudi, DuckLake</p></div>
+  </div>
+  <div class="callout tip mt small"><b>2026 reality:</b> surveys still show warehouses as the most common setup (≈44%) with lakehouses (≈27%) and hybrids (≈12%) growing, and the major warehouses now read and write Iceberg. The debate is fading: learn the open table formats either way (Day 3).</div>
+  <aside class="notes">Numbers are from Joe Reis's 2026 State of Data Engineering survey (≈1,100 respondents). Don't over-sell them: they are self-reported. The point is convergence on open formats.</aside>
+</section>
+
+<section class="slide">
+  <div class="kicker">ETL → ELT</div>
+  <h2>Load first, transform inside the platform</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div><p class="small mb0"><b>ETL</b> (classic)</p>
+        <div class="flow"><div class="step c-navy"><b>Extract</b></div><div class="arrow">→</div><div class="step c-coral"><b>Transform</b>on an ETL server</div><div class="arrow">→</div><div class="step c-navy"><b>Load</b>only the result</div></div></div>
+      <div><p class="small mb0"><b>ELT</b> (modern default)</p>
+        <div class="flow"><div class="step c-navy"><b>Extract</b></div><div class="arrow">→</div><div class="step c-navy"><b>Load</b>raw, as is</div><div class="arrow">→</div><div class="step c-teal"><b>Transform</b>SQL in the platform (dbt)</div></div></div>
+    </div>
+    <ul class="bullets small">
+      <li><b>Storage is cheap, compute is elastic</b>: keep the raw copy.</li>
+      <li><b>Reprocess at will</b>: a bug in a transformation is fixed by re-running it, not by re-extracting from the source.</li>
+      <li><b>SQL is the lingua franca</b>: analysts can read and review transformations.</li>
+      <li>ETL still fits when data <b>must not land raw</b> (e.g. personal data that must be masked first, Day 4).</li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Layers</div>
+  <h2>Medallion layers: a contract between stages</h2>
+  <div class="cols cols-3">
+    <div class="card" style="--c:#b06f2e"><h4>Bronze · raw</h4><ul class="small"><li>Exactly what the source sent</li><li>Append-only, plus load metadata</li><li>Replayable history</li></ul></div>
+    <div class="card" style="--c:#8a96a8"><h4>Silver · staging</h4><ul class="small"><li>Typed, deduplicated, conformed</li><li>One row per entity or event</li><li>Bad rows quarantined</li></ul></div>
+    <div class="card" style="--c:#c9a227"><h4>Gold · marts</h4><ul class="small"><li>Business-ready facts and dimensions</li><li>Metrics, aggregates, features</li><li>What dashboards and AI read</li></ul></div>
+  </div>
+  <div class="callout note mt small">Names vary (raw / staging / marts in dbt, landing / curated / consumption elsewhere). What matters: <b>each layer has a clear promise</b>, and consumers only read the layer meant for them.</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">The 2026 toolbox</div>
+  <h2>The open tools we use, and their managed cousins</h2>
+  <table class="t small">
+    <tr><th>Job</th><th>This course</th><th>Also common</th></tr>
+    <tr><td>Query engine (single node)</td><td><b>DuckDB</b>, <b>Polars</b></td><td>DataFusion, chDB, pandas</td></tr>
+    <tr><td>Distributed engine</td><td><b>Spark 4</b></td><td>Trino, Flink, Databricks, Snowflake, BigQuery</td></tr>
+    <tr><td>File / table format</td><td><b>Parquet</b> + <b>Apache Iceberg</b></td><td>Delta Lake, Hudi, DuckLake</td></tr>
+    <tr><td>Ingestion</td><td><b>dlt</b>, custom Python</td><td>Fivetran, Airbyte, Debezium, Kafka Connect</td></tr>
+    <tr><td>Transformation</td><td><b>dbt</b></td><td>SQLMesh, Spark SQL, stored procedures</td></tr>
+    <tr><td>Orchestration</td><td><b>Dagster</b> (lab), Airflow 3 (slides)</td><td>Prefect, Kestra, cloud schedulers</td></tr>
+    <tr><td>Quality &amp; contracts</td><td><b>dbt tests</b>, <b>Pandera</b>, ODCS</td><td>Great Expectations, Soda, Monte Carlo</td></tr>
+    <tr><td>Streaming</td><td>concepts + Python (Kafka/Flink on slides)</td><td>Kafka, Redpanda, Flink, Kinesis, Pub/Sub</td></tr>
+  </table>
+</section>
+
+<section class="slide">
+  <div class="kicker">Single node first</div>
+  <h2>DuckDB: an analytical database in a library</h2>
+  <div class="cols cols-2">
+    <pre class="code s"><code class="language-python">import duckdb
+con = duckdb.connect()            # in-memory; or "qafila.duckdb"
+
+# Query files where they are: no load step
+con.sql("""
+  SELECT event_type, count(*) AS n
+  FROM read_json_auto('data/raw/events/delivery_events.jsonl')
+  GROUP BY ALL ORDER BY n DESC
+""").show()
+
+# Attach the app database (read-only) and join across sources
+con.sql("ATTACH 'data/raw/qafila_oltp.sqlite' AS app (TYPE sqlite, READ_ONLY)")
+con.sql("""
+  SELECT s.city, count(*) AS orders
+  FROM app.orders o JOIN app.stores s USING (store_id)
+  GROUP BY ALL
+""").df()                         # → pandas; .pl() → Polars</code></pre>
+    <div class="stack small">
+      <div class="card c-teal flat"><b>In-process</b>: <code>pip install duckdb</code>. No server, no cluster.</div>
+      <div class="card c-cyan flat"><b>Columnar + vectorized</b>: scans millions of rows per second per core.</div>
+      <div class="card c-coral flat"><b>Reads everything</b>: CSV, JSON, Parquet, Iceberg, SQLite, PostgreSQL, S3/HTTP.</div>
+      <div class="card c-purple flat"><b>Larger than memory</b>: spills to disk; handles tens of GB on a laptop.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Profiling a new source</div>
+  <h2>Before you build anything, look at the data</h2>
+  <div class="cols cols-2">
+    <ul class="bullets small">
+      <li><b>Shape</b>: rows, columns, types. Does the type match the meaning?</li>
+      <li><b>Keys</b>: is the "primary key" actually unique? Any nulls?</li>
+      <li><b>Relationships</b>: do foreign keys resolve (orphans)?</li>
+      <li><b>Ranges</b>: min/max dates, negative amounts, impossible values.</li>
+      <li><b>Formats</b>: phone numbers, time zones, encodings, Arabic text variants.</li>
+      <li><b>Freshness and volume</b>: latest timestamp, rows per day.</li>
+    </ul>
+    <pre class="code s"><code class="language-sql">SUMMARIZE app.orders;      -- min, max, nulls, approx unique
+
+SELECT count(*) - count(DISTINCT national_id) AS dup_ids
+FROM app.customers;
+
+SELECT count(*) AS orphan_orders
+FROM app.orders o
+LEFT JOIN app.customers c USING (customer_id)
+WHERE c.customer_id IS NULL;</code></pre>
+  </div>
+  <div class="callout tip mt small"><b>Write down every issue you find.</b> Each one becomes a test (Day 2) or a contract clause (Day 4). Lab 1.1 starts that issue log.</div>
+</section>
+
+<section class="slide lab top">
+  <div class="cols cols-2">
+    <div>
+      <div class="lab-tag">Lab 1.1 · 25 min</div>
+      <h2>Platform tour with DuckDB</h2>
+      <a class="nb" href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D1_1_platform_tour.ipynb" target="_blank" rel="noopener">labs/D1_1_platform_tour.ipynb ↗</a>
+      <p class="small mt">Query every Qafila source in place, profile it, and start the issue log the rest of the week fixes.</p>
+    </div>
+    <ul class="checklist">
+      <li>Query CSV, JSON lines and SQLite in place <span class="min">5'</span></li>
+      <li>SUMMARIZE the orders; daily volume chart <span class="min">5'</span></li>
+      <li>Check keys: duplicate customers, orphan orders <span class="min">5'</span></li>
+      <li>Inspect formats: mobiles, timestamps, prices <span class="min">5'</span></li>
+      <li>Write the issue log as a table <span class="min">5'</span></li>
+      <li class="stretch">✱ Find the National Day spike and explain it</li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide quiz">
+  <div class="kicker">Checkpoint</div>
+  <h2>The BI team wants a live revenue dashboard. Fastest safe option?</h2>
+  <div class="opts">
+    <div class="opt" data-k="A">Point the dashboard at the app's production database with a read-only user</div>
+    <div class="opt" data-k="B" data-ok>Copy orders out incrementally into an analytical store and point the dashboard there</div>
+    <div class="opt" data-k="C">Export a CSV every morning and email it</div>
+  </div>
+  <div class="why callout tip small"><b>B.</b> Analytical scans compete with customer traffic on an OLTP database (A), and a daily CSV (C) is neither live nor reliable. An incremental copy every few minutes is cheap and isolates the two workloads.</div>
+</section>
+
+<section class="slide break" data-label="Break">
+  <div class="kicker">Break</div>
+  <h1>10-minute break</h1>
+  <div class="timer" data-minutes="10"></div>
+  <p class="lead">Next: Session 2 · Files &amp; columnar storage</p>
+</section>
+
+<!-- ======================= SESSION 2: FILES ======================= -->
+<section class="slide section" data-session="Session 2 · Columnar storage">
+  <div class="kicker">Session 2</div>
+  <h1>Files &amp; columnar storage</h1>
+  <ul class="bullets outcomes tight">
+    <li>Explain why columnar formats make analytics fast and cheap</li>
+    <li>Read Parquet metadata: row groups, statistics, encodings, compression</li>
+    <li>Partition data so engines can skip most of it</li>
+  </ul>
+  <div class="sess-no">02</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Layout matters</div>
+  <h2>Row storage vs. column storage</h2>
+  <div class="cols cols-2">
+    <div>
+      <p class="small mb0"><b>Row-oriented</b>: each record stored together</p>
+      <div class="tokens" style="font-size:20px">
+        <span>5001 · RUH-01 · 84.5 · delivered</span><span>5002 · JED-02 · 31.0 · cancelled</span><span>5003 · RUH-01 · 12.0 · delivered</span>
+      </div>
+      <p class="small mt mb0"><b>Column-oriented</b>: each column stored together</p>
+      <div class="tokens" style="font-size:20px">
+        <span>5001 · 5002 · 5003</span><span>RUH-01 · JED-02 · RUH-01</span><span>84.5 · 31.0 · 12.0</span><span>delivered · cancelled · delivered</span>
+      </div>
+    </div>
+    <div class="stack small">
+      <div class="card c-teal flat"><b>Read only what you need</b>: <code>SUM(amount)</code> touches one column out of thirty.</div>
+      <div class="card c-cyan flat"><b>Compresses well</b>: similar values sit next to each other (<code>RUH-01, RUH-01, …</code>).</div>
+      <div class="card c-coral flat"><b>Vectorized</b>: CPUs process a column chunk in tight loops (SIMD).</div>
+      <div class="card c-purple flat"><b>Trade-off</b>: single-row inserts and updates are expensive, so batch your writes.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Formats compared</div>
+  <h2>Pick the format for the job</h2>
+  <table class="t small">
+    <tr><th>Format</th><th>Layout</th><th>Schema</th><th>Compression</th><th>Best for</th></tr>
+    <tr><td><b>CSV</b></td><td>row, text</td><td>none (guessed)</td><td>poor</td><td>exchange with humans and spreadsheets</td></tr>
+    <tr><td><b>JSON lines</b></td><td>row, text</td><td>self-describing, loose</td><td>poor</td><td>events, API payloads, nested data</td></tr>
+    <tr><td><b>Avro</b></td><td>row, binary</td><td>embedded, evolvable</td><td>good</td><td>streaming messages (Kafka)</td></tr>
+    <tr class="hl"><td><b>Parquet</b></td><td>columnar, binary</td><td>embedded, typed</td><td>excellent</td><td>analytics at rest: the lakehouse default</td></tr>
+    <tr><td><b>ORC</b></td><td>columnar, binary</td><td>embedded, typed</td><td>excellent</td><td>Hive-era stacks</td></tr>
+    <tr><td><b>Arrow</b></td><td>columnar, in memory</td><td>typed</td><td>optional</td><td>zero-copy exchange between engines</td></tr>
+  </table>
+  <div class="callout note mt small"><b>Parquet on disk, Arrow in memory.</b> DuckDB, Polars, pandas, PyIceberg and Spark all speak both, which is why we can hand a table from one tool to another without copying it.</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Inside a Parquet file</div>
+  <h2>Row groups, column chunks, pages and a footer</h2>
+  <div class="cols cols-2 mid">
+    <div class="figure">
+      <svg viewBox="0 0 520 380" font-family="IBM Plex Sans, sans-serif" font-size="15">
+        <rect x="10" y="10" width="500" height="360" rx="12" fill="#f7f5f0" stroke="#1c355e" stroke-width="2"/>
+        <text x="24" y="34" font-weight="700" fill="#1c355e">orders.parquet</text>
+        <g>
+          <rect x="24" y="48" width="472" height="110" rx="8" fill="#fff" stroke="#00ae8d" stroke-width="2"/>
+          <text x="36" y="70" font-weight="600" fill="#00ae8d">Row group 0 (rows 0 – 999,999)</text>
+          <rect x="36" y="82" width="140" height="62" rx="6" fill="#c9efe6"/><text x="46" y="106">order_id</text><text x="46" y="128" font-size="12" fill="#5b6472">pages · min/max</text>
+          <rect x="186" y="82" width="140" height="62" rx="6" fill="#ffe3b3"/><text x="196" y="106">store_id</text><text x="196" y="128" font-size="12" fill="#5b6472">dictionary + RLE</text>
+          <rect x="336" y="82" width="148" height="62" rx="6" fill="#ffd3cb"/><text x="346" y="106">amount</text><text x="346" y="128" font-size="12" fill="#5b6472">zstd pages</text>
+        </g>
+        <g>
+          <rect x="24" y="168" width="472" height="110" rx="8" fill="#fff" stroke="#00ae8d" stroke-width="2"/>
+          <text x="36" y="190" font-weight="600" fill="#00ae8d">Row group 1 (rows 1,000,000 – …)</text>
+          <rect x="36" y="202" width="140" height="62" rx="6" fill="#c9efe6"/><text x="46" y="226">order_id</text>
+          <rect x="186" y="202" width="140" height="62" rx="6" fill="#ffe3b3"/><text x="196" y="226">store_id</text>
+          <rect x="336" y="202" width="148" height="62" rx="6" fill="#ffd3cb"/><text x="346" y="226">amount</text>
+        </g>
+        <rect x="24" y="290" width="472" height="66" rx="8" fill="#1c355e"/>
+        <text x="36" y="316" fill="#fff" font-weight="600">Footer: schema · row-group offsets · per-chunk statistics</text>
+        <text x="36" y="340" fill="#ffb548" font-size="13">min / max / null_count → engines skip row groups without reading them</text>
+      </svg>
+    </div>
+    <ul class="bullets small">
+      <li><b>Row group</b>: a horizontal slice (often ~128 MB or ~1M rows). The unit of parallelism and skipping.</li>
+      <li><b>Column chunk</b>: one column inside a row group, split into <b>pages</b>.</li>
+      <li><b>Footer</b>: read first. It holds the schema and the <b>statistics</b> engines use to skip data.</li>
+      <li><b>Encodings</b>: dictionary (repeated strings), run-length, delta (sorted ints, timestamps).</li>
+      <li><b>Compression</b> on top: Snappy (fast), <b>ZSTD</b> (smaller; a good default today).</li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Pushdown</div>
+  <h2>The fastest data is the data you never read</h2>
+  <div class="cols cols-2">
+    <pre class="code s"><code class="language-sql">-- Projection pushdown: read 2 of 9 columns
+-- Predicate pushdown: skip row groups whose
+--   max(created_at) < '2026-09-23'
+EXPLAIN ANALYZE
+SELECT store_id, sum(amount)
+FROM 'orders.parquet'
+WHERE created_at >= '2026-09-23'
+GROUP BY store_id;
+
+-- Inspect what the engine can use to skip
+SELECT row_group_id, path_in_schema,
+       stats_min, stats_max, compression
+FROM parquet_metadata('orders.parquet');</code></pre>
+    <div class="stack small">
+      <div class="card c-teal flat"><b>Projection pushdown</b>: only the referenced columns are decoded. <code>SELECT *</code> defeats it.</div>
+      <div class="card c-cyan flat"><b>Predicate pushdown</b>: row groups whose min/max cannot match are skipped entirely.</div>
+      <div class="card c-coral flat"><b>Sort to skip</b>: statistics only help if values are clustered. Sorting by <code>created_at</code> before writing makes date filters skip almost everything.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Partitioning</div>
+  <h2>Directories as a coarse index</h2>
+  <div class="cols cols-2">
+    <pre class="code s" data-file="Hive-style partitions"><code>orders/
+  order_date=2026-09-22/part-0.parquet
+  order_date=2026-09-23/part-0.parquet
+  order_date=2026-09-24/part-0.parquet
+  ...</code></pre>
+    <pre class="code s"><code class="language-python">con.sql("""
+  COPY (SELECT *, created_at::DATE AS order_date
+        FROM orders)
+  TO 'lake/orders' (FORMAT parquet,
+                    PARTITION_BY (order_date))
+""")
+# a filter on order_date opens one folder
+con.sql("""SELECT count(*) FROM read_parquet(
+  'lake/orders/*/*.parquet', hive_partitioning=true)
+  WHERE order_date = '2026-09-23'""")</code></pre>
+  </div>
+  <div class="cols cols-2 mt">
+    <div class="callout tip small"><b>Good partition keys</b> are low-cardinality and match how data is <b>filtered</b> and <b>loaded</b>: date, country, tenant.</div>
+    <div class="callout warn small"><b>Over-partitioning</b> (by customer, by hour for small tables) creates thousands of tiny files: listing and opening them costs more than reading the data.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">The small-files problem</div>
+  <h2>Many tiny files are slow, expensive and fragile</h2>
+  <div class="cols cols-2 mid">
+    <div class="bars">
+      <div class="row"><span>1 × 1 GB file</span><div class="bar" style="--w:8%"></div><span class="val">fast</span></div>
+      <div class="row"><span>100 × 10 MB files</span><div class="bar" style="--w:22%;--c:var(--cyan)"></div><span class="val">ok</span></div>
+      <div class="row"><span>10,000 × 100 KB files</span><div class="bar" style="--w:100%;--c:var(--coral)"></div><span class="val">slow</span></div>
+      <p class="xsmall muted mt-s mb0">Same data, illustrative relative read time: each file costs a request, a footer read and planning work.</p>
+    </div>
+    <ul class="bullets small">
+      <li>Typical targets: <b>files of 128 MB – 1 GB</b>, row groups of ~128 MB.</li>
+      <li>Streaming and frequent micro-batches create small files by design (Day 3).</li>
+      <li>Fix with <b>compaction</b>: periodically rewrite small files into big ones. Table formats make that safe for concurrent readers.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide lab top">
+  <div class="cols cols-2">
+    <div>
+      <div class="lab-tag">Lab 1.2 · 25 min</div>
+      <h2>Parquet in practice</h2>
+      <a class="nb" href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D1_2_files_parquet.ipynb" target="_blank" rel="noopener">labs/D1_2_files_parquet.ipynb ↗</a>
+      <p class="small mt">Turn Qafila's order lines into a few million rows, store them four ways and measure what changes.</p>
+    </div>
+    <ul class="checklist">
+      <li>CSV vs. Parquet (Snappy, ZSTD): size and scan time <span class="min">6'</span></li>
+      <li>Read the footer: row groups, statistics, encodings <span class="min">5'</span></li>
+      <li>Sorted vs. unsorted: count row groups skipped <span class="min">5'</span></li>
+      <li>Partition by date; query one day <span class="min">5'</span></li>
+      <li>Over-partition on purpose; measure the cost <span class="min">4'</span></li>
+      <li class="stretch">✱ Same queries in Polars lazy mode; compare plans</li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide quiz">
+  <div class="kicker">Checkpoint</div>
+  <h2>A 20 GB Parquet table is filtered by <code>created_at</code> in almost every query, yet each query reads all 20 GB. Most likely cause?</h2>
+  <div class="opts">
+    <div class="opt" data-k="A">Parquet can't filter on timestamps</div>
+    <div class="opt" data-k="B" data-ok>Rows were written in random order, so every row group's min/max covers the whole date range</div>
+    <div class="opt" data-k="C">The files are compressed with ZSTD instead of Snappy</div>
+  </div>
+  <div class="why callout tip small"><b>B.</b> Statistics only let the engine skip row groups when values are clustered. Sort (or partition) by the filter column when writing.</div>
+</section>
+
+<section class="slide break" data-label="Break">
+  <div class="kicker">Long break</div>
+  <h1>20-minute break</h1>
+  <div class="timer" data-minutes="20"></div>
+  <p class="lead">Next: Session 3 · Batch ingestion</p>
+</section>
+
+<!-- ======================= SESSION 3: INGESTION ======================= -->
+<section class="slide section" data-session="Session 3 · Batch ingestion">
+  <div class="kicker">Session 3</div>
+  <h1>Batch ingestion</h1>
+  <ul class="bullets outcomes tight">
+    <li>Choose between full and incremental extraction; track a high-water mark</li>
+    <li>Pull from APIs reliably: pagination, rate limits, retries</li>
+    <li>Make loads idempotent and survive schema changes, with dlt</li>
+  </ul>
+  <div class="sess-no">03</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Where data comes from</div>
+  <h2>Every source type has its own failure modes</h2>
+  <div class="cols cols-4 gap-s">
+    <div class="card c-navy"><h4>Databases</h4><p class="small mb0">Load on production, long-running queries, deletes you can't see, time zones in timestamps.</p></div>
+    <div class="card c-teal"><h4>APIs</h4><p class="small mb0">Pagination, rate limits, tokens that expire, fields that appear or disappear.</p></div>
+    <div class="card c-cyan"><h4>Files</h4><p class="small mb0">Late or partial uploads, encodings, delimiters, renamed columns, re-sent files.</p></div>
+    <div class="card c-coral"><h4>Events</h4><p class="small mb0">Duplicates, out-of-order and late arrival, schema per producer version (Day 3).</p></div>
+  </div>
+  <div class="callout note mt small"><b>Talk to the source owner first:</b> what changes, how often, how deletes are represented, what the keys are, and who to call when it breaks. That conversation is the first draft of a data contract (Day 4).</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Extraction strategies</div>
+  <h2>Full vs. incremental</h2>
+  <div class="cols cols-2">
+    <div class="stack">
+      <div class="card c-navy"><h4>Full extract</h4><p class="small mb0">Copy everything, every time. Simple and always correct, including deletes. Fine for small tables (stores, products).</p></div>
+      <div class="card c-teal"><h4>Incremental extract</h4><p class="small mb0">Copy only what changed since the last run, using a <b>cursor</b> (high-water mark) like <code>updated_at</code> or an increasing ID.</p></div>
+    </div>
+    <pre class="code s"><code class="language-sql">-- state from the previous run: last_value = '2026-09-29 23:58:10'
+SELECT *
+FROM orders
+WHERE updated_at > :last_value      -- strictly greater?
+ORDER BY updated_at;
+-- after a successful load, store the new max(updated_at)</code></pre>
+  </div>
+  <div class="callout warn mt small"><b>Cursor traps:</b> rows with the same timestamp split across runs (use <code>&gt;=</code> + dedupe), clock skew, updates that don't touch <code>updated_at</code>, and <b>hard deletes, which no cursor can see</b> (CDC fixes this, Session 4).</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">APIs in practice</div>
+  <h2>Pagination, rate limits and retries</h2>
+  <div class="cols cols-2">
+    <pre class="code s"><code class="language-python">import random, time, requests
+
+def get_with_retry(url, params, tries=6):
+    for attempt in range(tries):
+        r = requests.get(url, params=params, timeout=30)
+        if r.status_code == 429 or r.status_code >= 500:
+            wait = float(r.headers.get("Retry-After", 0)) \
+                   or min(60, 2 ** attempt) + random.random()
+            time.sleep(wait)          # exponential backoff + jitter
+            continue
+        r.raise_for_status()          # 4xx: a bug, don't retry
+        return r.json()
+    raise RuntimeError(f"gave up after {tries} tries")
+
+page, rows = 1, []
+while page:
+    body = get_with_retry(f"{BASE}/payments",
+                          {"updated_since": cursor, "page": page})
+    rows += body["data"]
+    page = body["next_page"]</code></pre>
+    <div class="stack small">
+      <div class="card c-teal flat"><b>Pagination</b>: offset/page numbers drift if data changes during the read; <b>cursor tokens</b> are safer.</div>
+      <div class="card c-cyan flat"><b>Rate limits</b>: honour <code>429</code> + <code>Retry-After</code>. Back off exponentially, add jitter so workers don't retry in lockstep.</div>
+      <div class="card c-coral flat"><b>Retry only what is retryable</b>: timeouts, 429, 5xx. A 400 or 401 will fail again.</div>
+      <div class="card c-purple flat"><b>Secrets</b>: tokens come from a secret store or env vars, never from code or notebooks.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">The most important property</div>
+  <h2>Idempotency: running twice = running once</h2>
+  <div class="cols cols-2">
+    <div>
+      <p class="small">Pipelines <b>will</b> be re-run: retries, backfills, a colleague pressing "run" again. If a re-run creates duplicates, every number downstream is wrong.</p>
+      <table class="t small">
+        <tr><th>Technique</th><th>Use when</th></tr>
+        <tr><td><b>Merge / upsert on a key</b></td><td>records have a stable primary key</td></tr>
+        <tr><td><b>Replace a partition</b></td><td>loads are per day/hour (delete + insert that slice)</td></tr>
+        <tr><td><b>Replace the table</b></td><td>small dimensions, full extracts</td></tr>
+        <tr><td><b>Dedupe on read</b></td><td>append-only raw layer; latest record wins</td></tr>
+      </table>
+    </div>
+    <div class="stack small">
+      <div class="callout warn"><b>Not idempotent:</b> <code>INSERT INTO raw SELECT * FROM api_page</code> on every run.</div>
+      <div class="callout tip"><b>Idempotent:</b> <code>MERGE INTO payments USING batch ON payment_id …</code>, or "delete <code>load_date = today</code>, then insert".</div>
+      <div class="callout note"><b>Atomic state:</b> save the new cursor <b>after</b> the data commits. Saving it first loses data when the load fails halfway.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Schema evolution</div>
+  <h2>Sources change without asking you</h2>
+  <div class="cols cols-2">
+    <table class="t small">
+      <tr><th>Change</th><th>Kind</th><th>Typical response</th></tr>
+      <tr><td>New column (<code>wallet_provider</code>)</td><td>additive</td><td>add nullable column automatically</td></tr>
+      <tr><td>Wider type (int → bigint)</td><td>compatible</td><td>widen automatically</td></tr>
+      <tr><td>Column renamed</td><td><b>breaking</b></td><td>stop, alert, map explicitly</td></tr>
+      <tr><td>Type narrowed / changed meaning</td><td><b>breaking</b></td><td>stop, alert, version the data</td></tr>
+      <tr><td>Column removed</td><td><b>breaking</b></td><td>keep column, fill nulls, alert</td></tr>
+    </table>
+    <div class="stack small">
+      <div class="card c-teal flat"><b>Bronze tolerates</b>: land new fields (or keep the raw JSON) so nothing is lost.</div>
+      <div class="card c-coral flat"><b>Silver enforces</b>: typed models fail loudly on breaking changes instead of silently producing nulls.</div>
+      <div class="card c-purple flat"><b>Contracts prevent</b>: agree on the schema with the producer and validate it (Day 4).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">A tool for this</div>
+  <h2>dlt: ingestion as a Python library</h2>
+  <div class="cols cols-2">
+    <pre class="code s"><code class="language-python">import dlt
+from dlt.sources.helpers.rest_client import RESTClient
+from dlt.sources.helpers.rest_client.paginators import JSONResponsePaginator
+
+@dlt.resource(primary_key="payment_id", write_disposition="merge")
+def payments(updated=dlt.sources.incremental(
+        "updated_at", initial_value="2026-08-01T00:00:00Z")):
+    client = RESTClient(base_url=API,
+        paginator=JSONResponsePaginator(next_url_path="next"))
+    for page in client.paginate("/payments",
+            params={"updated_since": updated.last_value}):
+        yield page
+
+pipe = dlt.pipeline("qafila", destination="duckdb",
+                    dataset_name="raw")
+info = pipe.run(payments())
+print(info)   # load id, tables, rows; state saved in the destination</code></pre>
+    <div class="stack small">
+      <div class="card c-teal flat"><b>Incremental state</b>: the cursor is stored with the data and committed with it.</div>
+      <div class="card c-cyan flat"><b>Write dispositions</b>: <code>append</code>, <code>replace</code>, <code>merge</code> (on <code>primary_key</code>).</div>
+      <div class="card c-coral flat"><b>Schema inference + evolution</b>: new fields become new columns; nested JSON becomes child tables.</div>
+      <div class="card c-purple flat"><b>Load metadata</b>: every row gets <code>_dlt_load_id</code>; every run is recorded in <code>_dlt_loads</code>.</div>
+    </div>
+  </div>
+  <p class="xsmall muted mt-s mb0">Open source (Apache 2.0). Managed alternatives such as Fivetran or Airbyte do the same job with prebuilt connectors.</p>
+</section>
+
+<section class="slide lab top">
+  <div class="cols cols-2">
+    <div>
+      <div class="lab-tag">Lab 1.3 · 25 min</div>
+      <h2>Ingest Qafila with dlt</h2>
+      <a class="nb" href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D1_3_ingestion_dlt.ipynb" target="_blank" rel="noopener">labs/D1_3_ingestion_dlt.ipynb ↗</a>
+      <p class="small mt">A local mock of the payments API (paginated, rate-limited) and the app database land in DuckDB's <code>raw</code> schema.</p>
+    </div>
+    <ul class="checklist">
+      <li>Call the API by hand: pages, a 429, backoff <span class="min">5'</span></li>
+      <li>dlt resource with an incremental cursor + merge <span class="min">7'</span></li>
+      <li>Run twice: prove the load is idempotent <span class="min">3'</span></li>
+      <li>Load app tables (full for stores, incremental for orders) <span class="min">5'</span></li>
+      <li>Spot the new <code>wallet_provider</code> column; read the load log <span class="min">5'</span></li>
+      <li class="stretch">✱ Load the supplier CSVs; what happens in week 39?</li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide quiz">
+  <div class="kicker">Checkpoint</div>
+  <h2>Your incremental job saves the new cursor, then loads the batch. The load fails halfway. What happens on the next run?</h2>
+  <div class="opts">
+    <div class="opt" data-k="A">The failed rows are retried automatically</div>
+    <div class="opt" data-k="B" data-ok>The unloaded rows are skipped forever: the cursor already moved past them</div>
+    <div class="opt" data-k="C">Everything is loaded twice</div>
+  </div>
+  <div class="why callout tip small"><b>B.</b> State must be committed <b>with or after</b> the data, never before. That's why dlt stores its state in the destination, inside the same load.</div>
+</section>
+
+<section class="slide break" data-label="Break">
+  <div class="kicker">Break</div>
+  <h1>10-minute break</h1>
+  <div class="timer" data-minutes="10"></div>
+  <p class="lead">Next: Session 4 · Change data capture &amp; load strategies</p>
+</section>
+
+<!-- ======================= SESSION 4: CDC ======================= -->
+<section class="slide section" data-session="Session 4 · CDC & loading">
+  <div class="kicker">Session 4</div>
+  <h1>Change data capture &amp; load strategies</h1>
+  <ul class="bullets outcomes tight">
+    <li>Explain log-based CDC and read a Debezium change event</li>
+    <li>Apply changes with MERGE, including deletes and out-of-order events</li>
+    <li>Keep history with a Type 2 slowly changing dimension</li>
+  </ul>
+  <div class="sess-no">04</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Capturing change</div>
+  <h2>Three ways to know what changed</h2>
+  <table class="t">
+    <tr><th>Approach</th><th>How</th><th>Sees deletes?</th><th>Source load</th><th>Latency</th></tr>
+    <tr><td><b>Snapshot diff</b></td><td>full copy, compare with last copy</td><td>yes</td><td>high</td><td>hours</td></tr>
+    <tr><td><b>Query-based</b></td><td><code>WHERE updated_at &gt; cursor</code></td><td>no (soft deletes only)</td><td>medium</td><td>minutes</td></tr>
+    <tr class="hl"><td><b>Log-based CDC</b></td><td>read the database's transaction log (WAL, binlog)</td><td>yes</td><td>low</td><td>seconds</td></tr>
+  </table>
+  <div class="cols cols-2 mt">
+    <div class="callout tip small"><b>Log-based CDC</b> (e.g. Debezium on PostgreSQL logical replication or the MySQL binlog) emits <b>every</b> insert, update and delete, in commit order, without querying the tables.</div>
+    <div class="callout note small">Common path: <b>DB log → Debezium → Kafka → sink</b> (lakehouse table or warehouse). Managed: Fivetran, AWS DMS, Datastream, Confluent connectors.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Anatomy of a change event</div>
+  <h2>Before, after, operation, position</h2>
+  <div class="cols cols-2">
+    <pre class="code s" data-file="data/raw/cdc/customers_changes.jsonl (one line, formatted)"><code class="language-json">{
+  "op": "u",
+  "before": {"customer_id": 104063, "city": "Jeddah",
+             "district": "Obhur", "mobile": "0541622064", "...": "..."},
+  "after":  {"customer_id": 104063, "city": "Riyadh",
+             "district": "Hittin", "mobile": "0541622064", "...": "..."},
+  "source": {"db": "qafila", "table": "customers",
+             "lsn": 5012874},
+  "ts_ms": 1758802245000
+}</code></pre>
+    <div class="stack small">
+      <div class="card c-teal flat"><b>op</b>: <code>c</code> create, <code>u</code> update, <code>d</code> delete (<code>r</code> = snapshot read).</div>
+      <div class="card c-cyan flat"><b>before / after</b>: full row images. A delete has only <code>before</code>.</div>
+      <div class="card c-coral flat"><b>lsn</b>: log sequence number: the <b>true order</b> of changes. Arrival order is not.</div>
+      <div class="card c-purple flat"><b>Delivery is at-least-once</b>: expect duplicates after a connector restart.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Applying changes</div>
+  <h2>Dedupe, keep the latest per key, then MERGE</h2>
+  <pre class="code s"><code class="language-sql">WITH changes AS (
+  SELECT DISTINCT ON (source.lsn) *              -- 1 · drop redelivered duplicates
+  FROM read_json_auto('data/raw/cdc/customers_changes.jsonl')
+), latest AS (
+  SELECT coalesce(after.customer_id, before.customer_id) AS customer_id, op, after
+  FROM changes
+  QUALIFY row_number() OVER (PARTITION BY coalesce(after.customer_id, before.customer_id)
+                             ORDER BY source.lsn DESC) = 1   -- 2 · last change per key wins
+)
+MERGE INTO customers AS t
+USING latest AS s ON t.customer_id = s.customer_id
+WHEN MATCHED AND s.op = 'd' THEN DELETE                       -- 3 · hard delete
+WHEN MATCHED THEN UPDATE SET city = s.after.city, district = s.after.district,
+                             mobile = s.after.mobile, updated_at = s.after.updated_at
+WHEN NOT MATCHED AND s.op &lt;&gt; 'd' THEN INSERT (customer_id, city, district, mobile, updated_at)
+  VALUES (s.customer_id, s.after.city, s.after.district, s.after.mobile, s.after.updated_at);</code></pre>
+  <div class="callout note mt-s small"><code>MERGE</code> is standard SQL (DuckDB ≥ 1.4, Spark/Delta, Iceberg, Snowflake, BigQuery). Ordering by <code>lsn</code>, not by arrival, is what makes out-of-order delivery harmless.</div>
+  <aside class="notes">The INSERT branch is simplified on the slide; in the lab the column list is explicit. DISTINCT ON keeps one row per lsn: a redelivered event is identical, so it doesn't matter which copy survives.</aside>
+</section>
+
+<section class="slide">
+  <div class="kicker">Deletes</div>
+  <h2>Hard, soft, and tombstones</h2>
+  <div class="cols cols-3">
+    <div class="card c-coral"><h4>Hard delete</h4><p class="small mb0">Row disappears from the source. Invisible to cursors; CDC emits <code>op = d</code>. Required for erasure requests under PDPL.</p></div>
+    <div class="card c-cyan"><h4>Soft delete</h4><p class="small mb0">Source sets <code>is_deleted = 1</code> (an update). Easy to replicate, but every consumer must filter it.</p></div>
+    <div class="card c-navy"><h4>Tombstone</h4><p class="small mb0">In Kafka, a message with a key and a null value: "forget this key" for compacted topics.</p></div>
+  </div>
+  <div class="callout warn mt small"><b>Decide explicitly</b> how each layer represents deletes. A common choice: bronze keeps every event; silver applies hard deletes; marts exclude soft-deleted rows. Personal data must really disappear from every layer and every snapshot (Day 4).</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Keeping history</div>
+  <h2>Slowly changing dimensions</h2>
+  <div class="cols cols-2">
+    <table class="t small">
+      <tr><th>Type</th><th>Behaviour</th><th>Answers</th></tr>
+      <tr><td><b>0</b></td><td>never changes</td><td>"city at sign-up"</td></tr>
+      <tr><td><b>1</b></td><td>overwrite</td><td>"city now"</td></tr>
+      <tr class="hl"><td><b>2</b></td><td>new row per change, with validity range</td><td>"city <b>at order time</b>"</td></tr>
+    </table>
+    <table class="t small">
+      <tr><th>customer_id</th><th>city</th><th>valid_from</th><th>valid_to</th><th>is_current</th></tr>
+      <tr><td>104063</td><td>Jeddah</td><td>2025-06-02</td><td>2026-09-25</td><td>false</td></tr>
+      <tr><td>104063</td><td>Riyadh</td><td>2026-09-25</td><td><i>null</i></td><td>true</td></tr>
+    </table>
+  </div>
+  <pre class="code s mt-s"><code class="language-sql">-- As-of join: attribute each order to the customer's city at order time
+SELECT o.order_id, d.city
+FROM orders o JOIN dim_customer_scd2 d
+  ON o.customer_id = d.customer_id
+ AND o.created_at >= d.valid_from AND (o.created_at &lt; d.valid_to OR d.valid_to IS NULL);</code></pre>
+</section>
+
+<section class="slide lab top">
+  <div class="cols cols-2">
+    <div>
+      <div class="lab-tag">Lab 1.4 · 25 min</div>
+      <h2>From a CDC feed to an SCD2 dimension</h2>
+      <a class="nb" href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D1_4_cdc_merge_scd.ipynb" target="_blank" rel="noopener">labs/D1_4_cdc_merge_scd.ipynb ↗</a>
+      <p class="small mt">Start from the 1 September snapshot, replay September's changes and check you end up exactly where the app database is.</p>
+    </div>
+    <ul class="checklist">
+      <li>Read the feed; find duplicates and out-of-order events <span class="min">4'</span></li>
+      <li>Latest change per key; MERGE into a current-state table <span class="min">7'</span></li>
+      <li>Reconcile with the source database (0 differences) <span class="min">4'</span></li>
+      <li>Build the SCD2 history from the same events <span class="min">7'</span></li>
+      <li>As-of join: revenue by customer city at order time <span class="min">3'</span></li>
+      <li class="stretch">✱ Make the MERGE incremental: process the feed in 4 batches</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ======================= WRAP-UP ======================= -->
+<section class="slide" data-label="Day 1 wrap-up">
+  <div class="kicker">Day 1 deliverable</div>
+  <h2>What you built today</h2>
+  <div class="flow">
+    <div class="step c-navy"><b>Sources</b>DB · API · CDC · files</div>
+    <div class="arrow">→</div>
+    <div class="step c-teal"><b>Profile</b>issue log</div>
+    <div class="arrow">→</div>
+    <div class="step c-teal"><b>Store</b>Parquet, sorted + partitioned</div>
+    <div class="arrow">→</div>
+    <div class="step c-cyan"><b>Ingest</b>dlt, incremental, idempotent</div>
+    <div class="arrow">→</div>
+    <div class="step c-coral"><b>Apply CDC</b>MERGE + SCD2</div>
+  </div>
+  <div class="cols cols-3 mt">
+    <div class="card c-teal"><h4>Remember</h4><p class="small mb0">Columnar + statistics + clustering = read less data. Avoid tiny files.</p></div>
+    <div class="card c-cyan"><h4>Remember</h4><p class="small mb0">Every load must be safe to re-run. Commit state with the data.</p></div>
+    <div class="card c-coral"><h4>Remember</h4><p class="small mb0">Order changes by log position, not arrival. Decide how deletes flow.</p></div>
+  </div>
+</section>
+
+<section class="slide" data-label="Capstone">
+  <div class="kicker">Capstone: start thinking</div>
+  <h2>Form teams of 2–3 by the end of Day 2</h2>
+  <div class="cols cols-3">
+    <div class="card c-teal"><h4>1 · Qafila Lakehouse</h4><p class="small mb0">Batch + streaming platform for Qafila, from raw sources to governed marts and a near-real-time view.</p></div>
+    <div class="card c-cyan"><h4>2 · Open Data Platform</h4><p class="small mb0">Ingest Saudi open datasets into a lakehouse with tests, a semantic layer and a small dashboard.</p></div>
+    <div class="card c-coral"><h4>3 · Real-time Operations Monitor</h4><p class="small mb0">Event-time KPIs, SLA alerts, an Iceberg history table and replay.</p></div>
+  </div>
+  <div class="callout tip mt"><b>Tonight (optional, 30 min):</b> pick a use case and look at the data. Bring one sentence: <i>"Our platform turns ___ into ___ for ___, refreshed every ___."</i></div>
+</section>
+
+<section class="slide dark" data-label="Next">
+  <div class="kicker">Tomorrow · Day 2</div>
+  <h1>Transformation, Modeling &amp; Quality</h1>
+  <p class="lead mt">From raw tables to a tested, documented star schema.</p>
+  <div class="cols cols-4 gap-s mt">
+    <div class="card c-teal"><h4>DuckDB &amp; Polars</h4><p class="small mb0">Engines, plans, bronze → silver</p></div>
+    <div class="card c-cyan"><h4>Dimensional modeling</h4><p class="small mb0">Grain, facts, dimensions, keys</p></div>
+    <div class="card c-coral"><h4>dbt</h4><p class="small mb0">Models, refs, incremental, lineage</p></div>
+    <div class="card c-amber"><h4>Data quality</h4><p class="small mb0">Tests, contracts, quarantine</p></div>
+  </div>
+</section>
+
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="../assets/logo.js"></script>
+<script src="../assets/deck.js"></script>
+</body>
+</html>
