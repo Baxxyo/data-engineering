@@ -28,7 +28,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Lab 3.2 (Spark). Needs a Java 17+ runtime; Colab already has one.
+# Lab 3.2 (Spark). Needs Java 17+ locally; on Colab the lab installs Java 17 itself.
 spark = ["pyspark>=4.0"]
 
 [tool.uv]

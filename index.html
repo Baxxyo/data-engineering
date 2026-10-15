@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Modern Data Engineering</title>
+<link rel="icon" href="assets/img/academy.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+Arabic:wght@400;600;700&family=IBM+Plex+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #1c355e; --teal: #00ae8d; --coral: #e96852; --cyan: #00c1de; --amber: #ffb548; --purple: #625d9c;
+    --ink: #101820; --paper: #f7f5f0; --paper-2: #efece4; --line: #d4d0c5; --muted: #5b6472;
+    --font: "IBM Plex Sans", "IBM Plex Sans Arabic", system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 17px/1.55 var(--font); }
+  a { color: var(--teal); }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+  header {
+    background: radial-gradient(900px 500px at 85% 0%, rgba(0,174,141,.25), transparent 60%),
+                radial-gradient(700px 400px at 0% 100%, rgba(255,181,72,.18), transparent 60%), var(--navy);
+    color: #fff; padding: 28px 0 56px;
+  }
+  .logo { height: 44px; color: #fff; display: flex; }
+  .logo svg { height: 100%; width: auto; }
+  .kicker { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; font-weight: 600; color: var(--amber); margin: 48px 0 10px; }
+  h1 { font-size: clamp(34px, 6vw, 58px); line-height: 1.05; margin: 0 0 14px; letter-spacing: -.01em; }
+  header p { color: rgba(255,255,255,.8); font-size: 20px; max-width: 760px; margin: 0; }
+  .meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
+  .meta span { font-size: 14px; padding: 6px 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,.3); }
+  .meta span.track { background: var(--amber); color: var(--ink); border-color: var(--amber); font-weight: 600; }
+  h2 { color: var(--navy); font-size: 28px; margin: 56px 0 16px; }
+  h3 { color: var(--navy); margin: 0 0 6px; font-size: 20px; }
+  .grid { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+  .card { background: #fff; border: 1px solid var(--line); border-top: 5px solid var(--c, var(--navy)); border-radius: 14px; padding: 20px; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; }
+  .day { background: #fff; border: 1px solid var(--line); border-radius: 16px; margin-bottom: 18px; overflow: hidden; }
+  .day-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; padding: 18px 22px; border-left: 8px solid var(--c); }
+  .day-head .t { font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--c); font-weight: 700; }
+  .day-head h3 { font-size: 22px; margin: 2px 0 0; }
+  .btn { display: inline-block; text-decoration: none; background: var(--navy); color: #fff; padding: 9px 16px; border-radius: 10px; font-weight: 600; font-size: 15px; }
+  .btn:hover { background: #142846; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  td, th { padding: 10px 22px; border-top: 1px solid var(--paper-2); text-align: left; vertical-align: top; }
+  th { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  td.brk { color: var(--muted); font-style: italic; }
+  code { font-family: var(--mono); font-size: 13.5px; background: rgba(28,53,94,.07); padding: 1px 6px; border-radius: 5px; }
+  .two { display: grid; gap: 24px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  ul { padding-left: 20px; } li { margin-bottom: 6px; }
+  .bar { display: grid; grid-template-columns: 1fr 52px; gap: 10px; align-items: center; margin-bottom: 8px; font-size: 15px; }
+  .bar i { display: block; height: 10px; border-radius: 5px; background: var(--c, var(--teal)); width: var(--w); margin-top: 4px; }
+  footer { margin: 64px 0 0; padding: 24px 0 40px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+  .scroll { overflow-x: auto; }
+  @media (max-width: 640px) { td, th { padding: 9px 12px; } .day-head { padding: 16px; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="logo" id="logo"></div>
+    <div class="kicker">Data Engineering Track · Bootcamp</div>
+    <h1>Modern Data Engineering</h1>
+    <p>From raw sources to a governed, AI-ready lakehouse: ingest, model, test, scale, stream, orchestrate and govern data with the open tools data teams use today.</p>
+    <div class="meta">
+      <span class="track">Data Engineering Track</span>
+      <span>4 teaching days × 4h + capstone day</span>
+      <span>16 training hours</span>
+      <span>16 hands-on labs in Python and SQL</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <h2>One case study, all week</h2>
+  <p><b>Qafila</b> is a fictional quick-commerce grocery platform in Riyadh, Jeddah and Dammam. Its data arrives the way real data does: an app database, a paginated payments API, a CDC feed, a courier event stream, weekly supplier files and bilingual reviews, each with deliberate problems. Every lab adds a piece to one platform. All data is synthetic, so the labs run offline and nobody handles real personal data.</p>
+  <div class="grid">
+    <div class="card" style="--c:var(--teal)"><h3>Ingest</h3><p>DuckDB, Parquet, dlt, incremental loads, CDC and SCD2</p></div>
+    <div class="card" style="--c:var(--cyan)"><h3>Model</h3><p>DuckDB &amp; Polars, star schemas, dbt, tests and contracts</p></div>
+    <div class="card" style="--c:var(--coral)"><h3>Scale &amp; stream</h3><p>Apache Iceberg, Spark, event time, watermarks, streams into the lakehouse</p></div>
+    <div class="card" style="--c:var(--purple)"><h3>Operate</h3><p>Dagster, observability, data contracts, PDPL &amp; NDMO governance, data for AI</p></div>
+    <div class="card" style="--c:var(--amber)"><h3>Demonstrate</h3><p>Team capstones: a working platform, live demo, technical Q&amp;A</p></div>
+  </div>
+
+  <h2>Schedule and materials</h2>
+  <p style="color:var(--muted)">Each day: Session 1 → 10' break → Session 2 → 20' break → Session 3 → 10' break → Session 4. Each session is about 20–25 minutes of concepts and demos, then a 25-minute lab. In the slides press <code>F</code> for fullscreen, <code>←</code> <code>→</code> to navigate, <code>N</code> for speaker notes, <code>?</code> for help.</p>
+
+  <div class="day">
+    <div class="day-head" style="--c:var(--teal)"><div><div class="t">Day 1</div><h3>Data Platforms, Storage &amp; Ingestion</h3></div><a class="btn" href="slides/day1.html">Open slides →</a></div>
+    <div class="scroll"><table>
+      <tr><th>Session</th><th>Lab notebook (opens in Colab)</th></tr>
+      <tr><td><b>1 · The modern data platform</b>: lifecycle, OLTP vs. OLAP, warehouse, lake, lakehouse, ELT, medallion layers</td><td><a href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D1_1_platform_tour.ipynb">D1_1_platform_tour</a></td></tr>
+      <tr><td class="brk" colspan="2">Break · 10 min</td></tr>
+      <tr><td><b>2 · Files &amp; columnar storage</b>: Parquet internals, statistics, partitioning, pushdown, Arrow</td><td><a href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D1_2_files_parquet.ipynb">D1_2_files_parquet</a></td></tr>
+      <tr><td class="brk" colspan="2">Break · 20 min</td></tr>
+      <tr><td><b>3 · Batch ingestion</b>: full vs. incremental, cursors, pagination, retries, schema evolution, dlt</td><td><a href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D1_3_ingestion_dlt.ipynb">D1_3_ingestion_dlt</a></td></tr>
+      <tr><td class="brk" colspan="2">Break · 10 min</td></tr>
+      <tr><td><b>4 · Change data capture &amp; load strategies</b>: Debezium-style CDC, MERGE, deletes, SCD Type 2</td><td><a href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D1_4_cdc_merge_scd.ipynb">D1_4_cdc_merge_scd</a></td></tr>
+    </table></div>
+  </div>
+
+  <div class="day">
+    <div class="day-head" style="--c:var(--cyan)"><div><div class="t">Day 2</div><h3>Transformation, Modeling &amp; Quality</h3></div><a class="btn" href="slides/day2.html">Open slides →</a></div>
+    <div class="scroll"><table>
+      <tr><th>Session</th><th>Lab notebook (opens in Colab)</th></tr>
+      <tr><td><b>1 · Processing engines</b>: vectorized execution, lazy plans, DuckDB &amp; Polars, bronze → silver</td><td><a href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D2_1_bronze_to_silver.ipynb">D2_1_bronze_to_silver</a></td></tr>
+      <tr><td class="brk" colspan="2">Break · 10 min</td></tr>
+      <tr><td><b>2 · Dimensional modeling</b>: grain, facts and dimensions, star schema, surrogate keys</td><td><a href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D2_2_dimensional_modeling.ipynb">D2_2_dimensional_modeling</a></td></tr>
+      <tr><td class="brk" colspan="2">Break · 20 min</td></tr>
+      <tr><td><b>3 · dbt: transformation as software</b>: sources, refs, layers, incremental models, lineage</td><td><a href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D2_3_dbt_project.ipynb">D2_3_dbt_project</a></td></tr>
+      <tr><td class="brk" colspan="2">Break · 10 min</td></tr>
+      <tr><td><b>4 · Testing &amp; data quality</b>: dbt tests, unit tests, model contracts, Pandera, quarantine</td><td><a href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D2_4_data_quality.ipynb">D2_4_data_quality</a></td></tr>
+    </table></div>
+  </div>
+
+  <div class="day">
+    <div class="day-head" style="--c:var(--coral)"><div><div class="t">Day 3</div><h3>Lakehouse, Scale &amp; Streaming</h3></div><a class="btn" href="slides/day3.html">Open slides →</a></div>
+    <div class="scroll"><table>
+      <tr><th>Session</th><th>Lab notebook (opens in Colab)</th></tr>
+      <tr><td><b>1 · Open table formats &amp; the lakehouse</b>: Iceberg metadata, snapshots, time travel, schema and partition evolution</td><td><a href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D3_1_iceberg_lakehouse.ipynb">D3_1_iceberg_lakehouse</a></td></tr>
+      <tr><td class="brk" colspan="2">Break · 10 min</td></tr>
+      <tr><td><b>2 · Distributed processing with Spark</b>: partitions, shuffles, joins, skew and salting, AQE</td><td><a href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D3_2_spark.ipynb">D3_2_spark</a> (Colab)</td></tr>
+      <tr><td class="brk" colspan="2">Break · 20 min</td></tr>
+      <tr><td><b>3 · Streaming fundamentals</b>: logs and offsets, delivery guarantees, event time, windows, watermarks</td><td><a href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D3_3_streaming_fundamentals.ipynb">D3_3_streaming_fundamentals</a></td></tr>
+      <tr><td class="brk" colspan="2">Break · 10 min</td></tr>
+      <tr><td><b>4 · Real-time pipelines into the lakehouse</b>: exactly-once micro-batches, small files and compaction, near-real-time SLAs</td><td><a href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D3_4_stream_to_lakehouse.ipynb">D3_4_stream_to_lakehouse</a></td></tr>
+    </table></div>
+  </div>
+
+  <div class="day">
+    <div class="day-head" style="--c:var(--purple)"><div><div class="t">Day 4</div><h3>Production: Orchestration, Reliability, Governance &amp; AI</h3></div><a class="btn" href="slides/day4.html">Open slides →</a></div>
+    <div class="scroll"><table>
+      <tr><th>Session</th><th>Lab notebook (opens in Colab)</th></tr>
+      <tr><td><b>1 · Orchestration</b>: assets, schedules, sensors, partitions, backfills, asset checks, Dagster</td><td><a href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D4_1_orchestration_dagster.ipynb">D4_1_orchestration_dagster</a></td></tr>
+      <tr><td class="brk" colspan="2">Break · 10 min</td></tr>
+      <tr><td><b>2 · Observability &amp; data contracts</b>: freshness and volume monitors, ODCS, breaking changes, lineage</td><td><a href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D4_2_contracts_observability.ipynb">D4_2_contracts_observability</a></td></tr>
+      <tr><td class="brk" colspan="2">Break · 20 min</td></tr>
+      <tr><td><b>3 · Governance, security &amp; privacy</b>: PDPL, NDMO classification, Saudi PII, pseudonymization, masking, erasure</td><td><a href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D4_3_governance_privacy.ipynb">D4_3_governance_privacy</a></td></tr>
+      <tr><td class="brk" colspan="2">Break · 10 min</td></tr>
+      <tr><td><b>4 · Data engineering for AI + capstone kickoff</b>: semantic layer, embeddings, vector search, safe text-to-SQL</td><td><a href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/D4_4_data_for_ai.ipynb">D4_4_data_for_ai</a></td></tr>
+    </table></div>
+  </div>
+
+  <div class="day">
+    <div class="day-head" style="--c:var(--amber)"><div><div class="t">Day 5</div><h3>Capstone Project Presentations</h3></div><a class="btn" href="slides/day5.html">Open slides →</a></div>
+    <div class="scroll"><table>
+      <tr><th>Session</th><th>Notes</th></tr>
+      <tr><td><b>1 · Opening + presentations</b></td><td>Expectations (15'), teams 1–2</td></tr>
+      <tr><td class="brk" colspan="2">Break · 10 min</td></tr>
+      <tr><td><b>2 · Presentations</b></td><td>Teams 3–5</td></tr>
+      <tr><td class="brk" colspan="2">Break · 20 min</td></tr>
+      <tr><td><b>3 · Presentations</b></td><td>Teams 6–8</td></tr>
+      <tr><td class="brk" colspan="2">Break · 10 min</td></tr>
+      <tr><td><b>4 · Final presentations, review &amp; closing</b></td><td>Teams 9–10, peer feedback, lessons learned</td></tr>
+    </table></div>
+  </div>
+
+  <div class="two">
+    <div>
+      <h2>Capstone</h2>
+      <p>Teams of 2–3 build a working data platform, choosing one of:</p>
+      <ul>
+        <li><b>Qafila Lakehouse</b>: batch + streaming platform from raw sources to governed marts and a near-real-time operations view</li>
+        <li><b>Open Data Platform</b>: Saudi open datasets in a lakehouse with tests, a semantic layer and a small dashboard</li>
+        <li><b>Real-time Operations Monitor</b>: event-time KPIs, SLA alerts, an Iceberg history table and replay</li>
+      </ul>
+      <p>Minimum: two source types, one command end to end, a layered model with documented grain, idempotent incremental loads, 8+ tests or contract checks, orchestration and a governance note. Starter kit with a working Dagster pipeline: <a href="https://github.com/SDAIAAcademy/data-engineering/tree/main/labs/capstone">labs/capstone/</a>.</p>
+    </div>
+    <div>
+      <h2>Rubric</h2>
+      <div class="bar"><span>Functional end-to-end pipeline<i style="--w:100%"></i></span><b>30%</b></div>
+      <div class="bar"><span>Architecture &amp; data modeling decisions<i style="--w:83%;--c:var(--cyan)"></i></span><b>25%</b></div>
+      <div class="bar"><span>Data quality, testing &amp; observability<i style="--w:67%;--c:var(--coral)"></i></span><b>20%</b></div>
+      <div class="bar"><span>Orchestration, governance &amp; operability<i style="--w:50%;--c:var(--purple)"></i></span><b>15%</b></div>
+      <div class="bar"><span>Presentation &amp; reproducibility<i style="--w:33%;--c:var(--amber)"></i></span><b>10%</b></div>
+    </div>
+  </div>
+
+  <div class="two">
+    <div>
+      <h2>Participants will be able to</h2>
+      <ul>
+        <li>Design a modern data platform and choose between warehouse, lake and lakehouse</li>
+        <li>Build incremental, idempotent ingestion from databases, APIs, files and CDC feeds</li>
+        <li>Model data dimensionally and transform it with dbt, tested and under contract</li>
+        <li>Work with open table formats (Iceberg) and decide when Spark or streaming is worth it</li>
+        <li>Orchestrate, monitor and govern pipelines under PDPL and NDMO requirements</li>
+        <li>Prepare governed, AI-ready data: semantic layers, embeddings and safe text-to-SQL</li>
+      </ul>
+    </div>
+    <div>
+      <h2>Setup</h2>
+      <p><b>Audience:</b> Python- and SQL-proficient developers, analysts and data scientists moving into data engineering. No prior Spark, dbt, orchestration or streaming experience needed.</p>
+      <p><b>Environment:</b> any laptop CPU with <code>uv</code>, or Google Colab. No Docker or cloud account; Java 17+ only for the Spark lab (on Colab the lab installs it). Run <a href="https://colab.research.google.com/github/SDAIAAcademy/data-engineering/blob/main/labs/00_setup_check.ipynb">00_setup_check</a> before Day 1; see <a href="https://github.com/SDAIAAcademy/data-engineering/tree/main/labs#readme">labs/README.md</a>.</p>
+      <p><b>Stack:</b> DuckDB · Polars · Parquet / Arrow · dlt · dbt + dbt-duckdb · Apache Iceberg (PyIceberg) · PySpark 4 · Pandera · Dagster · ODCS data contracts · model2vec · an OpenAI-compatible LLM endpoint (optional).</p>
+    </div>
+  </div>
+</main>
+<footer><div class="wrap">SDAIA Academy · Data Engineering Track · Modern Data Engineering</div></footer>
+<script src="assets/logo.js"></script>
+<script>document.getElementById('logo').innerHTML = window.ACADEMY_LOGO || 'SDAIA Academy';</script>
+</body>
+</html>

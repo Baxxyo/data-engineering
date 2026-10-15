@@ -110,4 +110,4 @@ Teams of 2–3 present a working data platform: 10 minutes talk + live demo, 5 m
 ## Lab stack
 
 Python 3.10–3.13 · DuckDB · Polars · PyArrow / Parquet · dlt · dbt (v1) + dbt-duckdb · PyIceberg (SQL catalog) · PySpark 4 (Lab 3.2) · Pandera · Dagster + dagster-dbt · model2vec (static multilingual embeddings) · optional OpenAI-compatible LLM endpoint.
-Everything runs on a laptop CPU or Google Colab; no Docker, cloud account or JVM needed except Java for the Spark lab (preinstalled on Colab).
+Everything runs on a laptop CPU or Google Colab; no Docker, cloud account or JVM needed except Java 17+ for the Spark lab (on Colab the lab installs it).

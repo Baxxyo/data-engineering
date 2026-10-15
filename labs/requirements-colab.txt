@@ -1,0 +1,16 @@
+# Colab already ships pandas, numpy, matplotlib, requests and pyyaml.
+# DuckDB, Polars and PyArrow are preinstalled too, but the labs need newer versions.
+duckdb>=1.4
+polars>=1.30
+pyarrow>=18
+dlt[duckdb]>=1.10
+dbt-core>=1.10
+dbt-duckdb>=1.9
+pyiceberg[sql-sqlite,pyarrow,pyiceberg-core]>=0.12
+pandera[polars]>=0.22
+dagster>=1.10
+dagster-dbt>=0.26
+model2vec>=0.6
+openai>=1.50
+python-dotenv>=1.0
+# PySpark 4 and Java 17 (Lab 3.2) are installed by de_utils.get_spark() when the lab starts.
