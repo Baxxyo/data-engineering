@@ -354,7 +354,7 @@ def governed_customers():
         con.sql("""
             CREATE OR REPLACE TABLE governed.pii_classification AS
             SELECT * FROM (VALUES
-              ('raw.customers',      'national_id',   'Secret',     'raw only; HMAC person_token downstream'),
+              ('raw.customers',      'iban',          'Secret',     'never copied to governed or marts'),
               ('raw.customers',      'full_name',     'Restricted', 'never copied to governed or marts'),
               ('raw.customers',      'email',         'Restricted', 'only the domain is published'),
               ('raw.customers',      'mobile',        'Restricted', 'masked: +9665******NN'),
