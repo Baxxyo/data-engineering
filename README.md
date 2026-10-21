@@ -60,7 +60,16 @@ the 3-day look-back window. Backfilling a day twice deletes, then re-inserts, th
 - Payments ODCS contract (`labs/capstone/contracts/payments.odcs.yaml`):
   - structure rules are **blocking**: dbt does not run on a broken feed;
   - value rules **warn** and route bad rows to `quarantine.payments`.
-- **Real issue caught:** [N] payments with amount ≤ 0 (quarantined, owner notified).
+- **47 checks** run on every build (43 dbt data tests, 3 dbt unit tests, payments contract, volume monitor, PII scan).
+- **Real issues caught** in the source data:
+  - 16 payments with amount ≤ 0 (contract value rule; rows routed to `quarantine.payments`);
+  - 142 order lines with non-positive quantity (quarantined in `quarantine.qrn_order_items`, excluded from facts);
+  - 4 supplier costs ≤ 0;
+  - 258 orders whose totals don't match their payments (warn: routed to the payments owner).
+- **Incremental proof:** first run loaded 45,766 orders and 41,785 payments; the re-run reloaded only
+  the 3-day look-back (2,351 orders, 2,151 payments) with identical row counts and check results.
+- **Reconciliation:** raw.order_items (172,545) − fct_order_items (172,403) = 142,
+  exactly the quarantined lines: every row is either in the fact table or quarantined with a reason.
 - Volume monitor: each day compared with the same weekday's 4-week median, so weekends don't raise false alarms.
 
 ## Governance (PDPL / NDMO)
