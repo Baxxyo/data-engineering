@@ -71,6 +71,9 @@ the 3-day look-back window. Backfilling a day twice deletes, then re-inserts, th
 - **Reconciliation:** raw.order_items (172,545) − fct_order_items (172,403) = 142,
   exactly the quarantined lines: every row is either in the fact table or quarantined with a reason.
 - Volume monitor: each day compared with the same weekday's 4-week median, so weekends don't raise false alarms.
+- **Backfill proof:** 7 daily partitions (Sep 24–30) → 84 rows (7 days × 12 stores);
+  re-running the backfill gives the same 84 rows (delete-then-insert per day).
+
 
 ## Governance (PDPL / NDMO)
 - Column classification by NDMO level: `governed.pii_classification`.
